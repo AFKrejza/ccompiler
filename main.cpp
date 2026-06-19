@@ -31,7 +31,6 @@
 
 */
 
-
 void throw_error(int code, std::string msg);
 void throw_warn(int code, std::string msg);
 bool is_whitespace(char c);
@@ -50,6 +49,7 @@ bool is_alnum_underscore(char c);
 bool is_identifier_start(char c);
 std::string scanLexeme(char c);
 void populateKeywords();
+void populatePrintmap();
 bool parseInteger(std::string lexeme);
 int ctoi(char c);
 
@@ -83,9 +83,15 @@ struct LiteralVisitor {
 
 enum TokenType {
 	// single character
-	SEMICOLON, PLUS, MINUS, ASSIGNMENT,
+	SEMICOLON, PLUS, MINUS, MULT, ASSIGNMENT, OPEN_PARENTHESES, CLOSED_PARENTHESES, OPEN_SQUARE_BRACKET, CLOSED_SQUARE_BRACKET, OPEN_CURLY_BRACE, CLOSED_CURLY_BRACE,
+
 
 	// one or two character
+	GREATER_THAN, LESS_THAN, EQUAL_TO, GREATER_OR_EQUAL, LESSER_OR_EQUAL,
+	NOT_EQUAL,
+
+	LOGICAL_NOT, LOGICAL_AND, LOGICAL_OR,
+	BITWISE_NOT, BITWISE_AND, BITWISE_OR,
 
 	// literals
 	IDENTIFIER, CHAR, SHORT, INT, LONG, STRING_LITERAL, INTEGER,
@@ -99,17 +105,16 @@ enum TokenType {
 	END_OF_FILE, // is this necessary? probably not.
 };
 
-// TODO: write a function which populates tokentypes by string. it could just read this source file directly?
+std::unordered_map<TokenType, std::string> printmap;
 
-// TODO: add length to make debugging easier
 class Token {
 	public:
 		TokenType type;
 		std::string lexeme; // exact source text
 		Literal literal;
 		int line;
-		int column;
-		int length;
+		int column; // TODO: broken
+		int length; // TODO: broken
 
 		Token(TokenType type, int length, std::string lexeme, Literal literal, int line, int column) {
 			this->type = type;
@@ -131,29 +136,15 @@ class Token {
 		}
 
 	private:
-		// TODO: this it outdated and simply a bad implementation.
-		// put all possible keywords into the hashmap and just read it from there each time.
 		std::string token_type_to_string(TokenType type)
 		{
 			int int_type = (int)type;
-			switch (int_type)
-			{
-				case 0: return "SEMICOLON";
-				case 1: return "PLUS";
-				case 2: return "MINUS";
-				case 3: return "ASSIGNMENT";
-				case 4: return "IDENTIFIER";
-				case 5: return "CHAR";
-				case 6: return "SHORT";
-				case 7: return "INT";
-				case 8: return "LONG";
-				case 9: return "STRING_LITERAL";
-				case 10: return "IF";
-				case 11: return "ELSE";
-				case 12: return "RETURN";
-				case 13: return "END_OF_FILE";
-			};
-			throw_error(3, "lmfao dumbass");
+
+			auto it = printmap.find(type);
+			if (it != printmap.end()) {
+				return it->second;
+			}
+			throw_error(3, "Couldn't find token to be printed. ???");
 			return "";
 		}
 
@@ -182,15 +173,14 @@ int main(int argc, char *argv[])
 	
 	source = read_source_code(argv[1]);	
 
+	populatePrintmap();
 	populateKeywords();
 
-
-	
-	// greed
 	while (!isAtEnd())
 	{
 		scanToken();
 	}
+	addToken(TokenType::END_OF_FILE, 1, "");
 
 	int len = tokenlist.size();
 	std::cout << "tokenlist size: " << len << std::endl;
@@ -221,13 +211,82 @@ void scanToken()
 			break;
 		case '\n':
 			break;
-		case '=':
-			addToken(TokenType::ASSIGNMENT, 1, "=", false);
-			break;
 		case ';':
-			addToken(TokenType::SEMICOLON, 1, ";", false);
+			addToken(TokenType::SEMICOLON, 1, ";");
 			break;
-		// add stuff like >= <= != == as well aka 2-char tokens
+		case '+':
+			addToken(TokenType::PLUS, 1, "+");
+			break;
+		case '-':
+			addToken(TokenType::MINUS, 1, "-");
+			break;
+		case '*':
+			addToken(TokenType::MULT, 1, "*");
+			break;
+		case '(':
+			addToken(TokenType::OPEN_PARENTHESES, 1, "(");
+			break;
+		case ')':
+			addToken(TokenType::CLOSED_PARENTHESES, 1, ")");
+			break;
+		case '{':
+			addToken(TokenType::OPEN_CURLY_BRACE, 1, "{");
+			break;
+		case '}':
+			addToken(TokenType::CLOSED_CURLY_BRACE, 1, "}");
+			break;
+		case '[':
+			addToken(TokenType::OPEN_SQUARE_BRACKET, 1, "[");
+			break;
+		case ']':
+			addToken(TokenType::CLOSED_SQUARE_BRACKET, 1, "]");
+			break;
+		case '=':
+			if (peek() == '>') {
+				addToken(TokenType::GREATER_OR_EQUAL, 2, ">=");
+			}
+			else if (peek() == '<') {
+				addToken(TokenType::LESSER_OR_EQUAL, 2, "<=");
+			}
+			else if (peek() == '=') {
+				addToken(TokenType::EQUAL_TO, 2, "==");
+			}
+			else {
+				addToken(TokenType::ASSIGNMENT, 1, "=");
+			}
+			break;
+		case '>':
+			if (peek() == '=') {
+				addToken(TokenType::GREATER_OR_EQUAL, 2, ">=");
+			}
+			else {
+				addToken(TokenType::GREATER_THAN, 1, ">");
+			}
+			break;
+		case '<':
+			if (peek() == '=') {
+				addToken(TokenType::LESSER_OR_EQUAL, 2, "<=");
+			}
+			else {
+				addToken(TokenType::LESS_THAN, 1, "<");
+			}
+			break;
+		case '!':
+			if (peek() == '=') {
+				addToken(TokenType::NOT_EQUAL, 2, "!=");
+			}
+			else {
+				addToken(TokenType::LOGICAL_NOT, 1, "!");
+			}
+			break;
+		case '&':
+			if (peek() == '&') {
+				addToken(TokenType::LOGICAL_AND, 2, "&&");
+			}
+			else {
+				addToken(TokenType::BITWISE_AND, 1, "&"); // won't work with pointers
+			}
+			break;
 		case '"':
 			parse_string();
 			break;
@@ -473,8 +532,8 @@ std::string scanLexeme(char c)
 	// 	std::cout << "meow" << std::endl;
 	// 	return "";
 	// }
-	std::cout << "At: " << source.substr(start, current - start) << std::endl;
-	std::cout << "Start: " << start << " End: " << current << std::endl;
+	// std::cout << "At: " << source.substr(start, current - start) << std::endl;
+	// std::cout << "Start: " << start << " End: " << current << std::endl;
 	if (is_alnum_underscore(source[current]))
 	{
 		while (is_alnum_underscore(peek())) // is this right?
@@ -498,25 +557,6 @@ std::string scanLexeme(char c)
 bool parse_keyword(std::string lexeme)
 {
 	return true;
-}
-
-void populateKeywords() // single- and double- character keywords can be removed from here
-{
-	keywords["semicolon"] = SEMICOLON;
-	keywords["plus"] = PLUS;
-	keywords["minus"] = MINUS;
-	keywords["assignment"] = ASSIGNMENT;
-	keywords["identifier"] = IDENTIFIER;
-	keywords["char"] = CHAR;
-	keywords["short"] = SHORT;
-	keywords["int"] = INT;
-	keywords["long"] = LONG;
-	keywords["string_literal"] = STRING_LITERAL;
-	keywords["if"] = IF;
-	keywords["else"] = ELSE;
-	keywords["return"] = RETURN;
-	keywords["end_of_file"] = END_OF_FILE;
-	keywords["integer"] = INTEGER;
 }
 
 // only does positive ints
@@ -545,4 +585,59 @@ bool parseInteger(std::string lexeme)
 int ctoi(char c)
 {
 	return c - '0';
+}
+
+// contains all symbols and keywords
+void populatePrintmap()
+{
+	printmap[SEMICOLON] = "semicolon";
+	printmap[PLUS] = "plus";
+	printmap[MINUS] = "minus";
+	printmap[MULT] = "mult";
+	printmap[ASSIGNMENT] = "assignment";
+	printmap[OPEN_PARENTHESES] = "open_parentheses";
+	printmap[CLOSED_PARENTHESES] = "closed_parentheses";
+	printmap[OPEN_SQUARE_BRACKET] = "open_square_bracket";
+	printmap[CLOSED_SQUARE_BRACKET] = "closed_square_bracket";
+	printmap[OPEN_CURLY_BRACE] = "open_curly_brace";
+	printmap[CLOSED_CURLY_BRACE] = "closed_curly_brace";
+	printmap[GREATER_THAN] = "greater_than";
+	printmap[LESS_THAN] = "less_than";
+	printmap[EQUAL_TO] = "equal_to";
+	printmap[GREATER_OR_EQUAL] = "greater_or_equal";
+	printmap[LESSER_OR_EQUAL] = "lesser_or_equal";
+	printmap[NOT_EQUAL] = "not_equal";
+	printmap[LOGICAL_NOT] = "logical_not";
+	printmap[LOGICAL_AND] = "logical_and";
+	printmap[LOGICAL_OR] = "logical_or";
+	printmap[BITWISE_NOT] = "bitwise_not";
+	printmap[BITWISE_AND] = "bitwise_and";
+	printmap[BITWISE_OR] = "bitwise_or";
+	printmap[IDENTIFIER] = "identifier";
+	printmap[CHAR] = "char";
+	printmap[SHORT] = "short";
+	printmap[INT] = "int";
+	printmap[LONG] = "long";
+	printmap[STRING_LITERAL] = "string_literal";
+	printmap[INTEGER] = "integer";
+	printmap[IF] = "if";
+	printmap[ELSE] = "else";
+	printmap[RETURN] = "return";
+	printmap[END_OF_FILE] = "end_of_file";
+}
+
+void populateKeywords()
+{
+	const std::vector<TokenType> keywordFilter = {
+		CHAR, SHORT, INT, LONG, IF, ELSE, RETURN
+	};
+
+	int len = keywordFilter.size();
+	for (int i = 0; i < len; i++)
+	{
+		auto it = printmap.find(keywordFilter[i]);
+		if (it != printmap.end()) {
+			keywords[it->second] = it->first;
+		}
+	}
 }
