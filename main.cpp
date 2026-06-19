@@ -7,28 +7,12 @@
 
 /*
 	g++ main.cpp -o main && ./main source.c
+	include -DDEBUG compiler flag for extra info
+
 	nasm -felf64 output.asm && ld output.o && ./a.out
 	echo $?
 
-	TODO: create a testing setup. Do Test-driven development for this stuff.
-
-	// look at first commit of chibicc: https://github.com/rui314/chibicc/commit/0522e2d77e3ab82d3b80a5be8dbbdc8d4180561c
-	// go through them in order!
-	// the first one just takes a value and returns it.
-
-	// https://gpfault.net/posts/asm-tut-3.txt.html
-
-	// https://craftinginterpreters.com/scanning.html
-
-	Goals: create a scanner. create a list of tokens for reserved keywords as an enum
-	then create a token class
-
-	consider adding this to the Token class as stated in 4.2.3 'Location Information'
-	int offset/column;
-	int length;
-
-	look into: std::vector, std::unordered_map, std::string, std::variant
-
+	TODO: create a testing setup for each part of the compiler, not just codegen.
 */
 
 void throw_error(int code, std::string msg);
@@ -65,7 +49,6 @@ using Literal = std::variant<
 	bool
 >;
 
-// https://gist.github.com/MangaD/eb7dd67de08072edb6fa83c534716a80
 struct LiteralVisitor {
 	std::string operator()(std::monostate v) const {
 		return "empty";
@@ -82,27 +65,21 @@ struct LiteralVisitor {
 };
 
 enum TokenType {
-	// single character
 	SEMICOLON, PLUS, MINUS, MULT, ASSIGNMENT, OPEN_PARENTHESES, CLOSED_PARENTHESES, OPEN_SQUARE_BRACKET, CLOSED_SQUARE_BRACKET, OPEN_CURLY_BRACE, CLOSED_CURLY_BRACE,
 
-
-	// one or two character
 	GREATER_THAN, LESS_THAN, EQUAL_TO, GREATER_OR_EQUAL, LESSER_OR_EQUAL,
 	NOT_EQUAL,
 
 	LOGICAL_NOT, LOGICAL_AND, LOGICAL_OR,
 	BITWISE_NOT, BITWISE_AND, BITWISE_OR,
 
-	// literals
 	IDENTIFIER, CHAR, SHORT, INT, LONG, STRING_LITERAL, INTEGER,
 
-	// keywords
 	IF, ELSE, 
 
-	// MAIN, // must contain int main() ? idk dude
 	RETURN,
 
-	END_OF_FILE, // is this necessary? probably not.
+	END_OF_FILE,
 };
 
 std::unordered_map<TokenType, std::string> printmap;
@@ -165,9 +142,6 @@ std::unordered_map<std::string, TokenType> keywords;
 
 int main(int argc, char *argv[])
 {
-	// enum TokenType a = TokenType::INT;
-	// Token token(a, "testlexeme", "meow", 4, 0, 4);
-
 	if (argc < 2) throw_error(1, "Missing argument");
 	if (argc > 2) throw_error(1, "Too many arguments (only takes one file)");
 	
@@ -197,10 +171,11 @@ int main(int argc, char *argv[])
 
 void scanToken()
 {
-	// first get the lexeme, then select it from the list
-
 	char c = advance();
-	// std::cout << "Pre-switch: " << c << std::endl;
+	#ifdef DEBUG
+		std::cout << "Pre-switch: " << c << std::endl;
+	#endif
+
 	switch (c)
 	{
 		case ' ':
@@ -341,36 +316,6 @@ void parse_string()
 	}
 }
 
-bool parse_int(std::string lexeme)
-{
-	int start = current;
-	std::string match = "int";
-
-	for (int i = 0; i < match.length(); i++)
-	{
-		if (source[current] != match[i] || is_whitespace(peek()))
-			return false;
-		std::cout << "debug" << std::endl;
-		advance();
-	}
-	if (is_whitespace(source[current]) || source[current] == ';')
-	{
-		addToken(TokenType::INT, current - start, source.substr(start, current - start));
-		return true;
-	}
-	return false;
-
-
-	// if (source[current + 1] == 'n' && source[current + 2] == 't' && is_whitespace(source[current + 3]))
-	// {
-	// 	Token token(TokenType::INT, source.substr(current, current + 2), false, line, column);
-	// 	tokenlist.push_back(token);
-	// 	current += 3;
-	// 	return true;
-	// }
-	// return false;
-}
-
 // https://en.cppreference.com/cpp/language/identifiers
 bool parse_identifier(std::string lexeme)
 {
@@ -388,19 +333,14 @@ bool parse_identifier(std::string lexeme)
 			throw_invalid_identifier();
 		}
 	}
-
-	// while (!is_whitespace(peek()))
-	// {
-	// 	if (!is_alnum_underscore(c))
-	// 	{
-	// 		// throw_invalid_identifier();
-	// 		break;
-	// 	}
-	// 	c = advance();
-	// }
-	std::cout << start << ", " << current << std::endl;
-	std::cout << source.substr(start, current - start) << std::endl;
 	addToken(TokenType::IDENTIFIER, current - start, lexeme);
+
+	#ifdef DEBUG
+		std::cout << "parse_identifier: Start: " << start
+		<< ", Current: " << current << ", Substr: " << 
+		source.substr(start, current - start) << std::endl;
+	#endif
+
 	return true;
 }
 
@@ -412,8 +352,6 @@ bool isnum(char c)
 	return false;
 }
 
-
-// TODO: learn how unions work here, like adding stuff to it. Learning it for C will also be useful.
 void addToken(TokenType type, int length, std::string lexeme, Literal literal)
 {
 	Token token(type, length, lexeme, literal, line, column);
@@ -422,7 +360,7 @@ void addToken(TokenType type, int length, std::string lexeme, Literal literal)
 }
 
 
-// TODO: find a way to print where the error was thrown in this file (surely a C++ exception or something?)
+// TODO: find a way to print where the error was thrown in this file (a C++ exception or something?)
 void throw_invalid_identifier()
 {
 	std::string s = "Invalid identifier symbol on line ";
@@ -457,8 +395,6 @@ bool is_whitespace(char c)
 			return false;
 	}
 }
-
-// TODO: make a string for identifier start chars and identifier chars
 
 bool isAtEnd()
 {
@@ -527,30 +463,19 @@ std::string scanLexeme(char c)
 	std::string lexeme;
 	int start = current - 1;
 
-	// if (!is_identifier_start(c))
-	// {
-	// 	std::cout << "meow" << std::endl;
-	// 	return "";
-	// }
-	// std::cout << "At: " << source.substr(start, current - start) << std::endl;
-	// std::cout << "Start: " << start << " End: " << current << std::endl;
 	if (is_alnum_underscore(source[current]))
 	{
-		while (is_alnum_underscore(peek())) // is this right?
+		while (is_alnum_underscore(peek()))
 		{
 			advance();
 		}
 	}
-
-	// while (!isAtEnd() && is_alnum_underscore(c))
-	// {
-	// 	if (!is_alnum_underscore(peek()))
-	// 		break;
-	// 	c = advance();
-	// }
-	// std::cout << "Lexeme scan end: " << c << std::endl;
 	lexeme = source.substr(start, current - start);
-	// std::cout << "NEW LEXEME: " << lexeme << "length: " << lexeme.length() << std::endl;
+
+	#ifdef DEBUG
+		std::cout << "NEW LEXEME: " << lexeme << "length: " << lexeme.length() << std::endl;
+	#endif
+
 	return lexeme;
 }
 
@@ -562,11 +487,6 @@ bool parse_keyword(std::string lexeme)
 // only does positive ints
 bool parseInteger(std::string lexeme)
 {
-	//bool isPositive = true;
-	//if (lexeme[0] == '-')
-	//{
-	//	isPositive = false;
-	//}
 	int number = 0;	
 	int len = lexeme.length();
 	for (int i = 0; i < len; i++)
