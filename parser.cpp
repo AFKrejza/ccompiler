@@ -24,52 +24,71 @@ class Node {
 
 	public:
 		Node *parent;
-		TokenType type;
-		Literal literal;
-		int line;
-		// uuuh maybe store a pointer to the original token?
 		std::vector<Node*> children;
 
-		Node(TokenType type, Literal literal, int line) {
-			this->type = type;
-			this->literal = literal;
-			this->line = line;
+		Node(Token *token) {
+			this->token = token;
 		}
 
-		void print() {
-			std::cout << "   Type: " << Token::token_type_to_string(type) << std::endl;
-			std::cout << "Literal: " << std::visit(LiteralVisitor{}, literal) << std::endl;
+		void print(int indent) { // TODO: also print the type of the Node itself
+			std::string indentation{};
+			std::string bar = "|";
+			for (int i = 0; i < indent - 1; i++) {
+				indentation.append(bar)
+						   .append("   ");
+			}
+			indentation.append(bar)
+					   .append("--");
+			std::cout << indentation;
+			std::cout << "Type: " << Token::token_type_to_string(this->getType())
+			<< " Lexeme: " << getLexeme() << std::endl;
 		}
 
 		// runtime polymorphism!
-		virtual void printChildren() {
-			print();
+		virtual void printChildren(int indent) {
+			print(indent);
 			for (Node *i: children) {
-				i->printChildren();
+				i->printChildren(indent + 1);
 			}
 		}
+
+		TokenType getType() const {
+			return this->token->type;
+		}
+		Literal getLiteral() const {
+			return this->token->literal;
+		}
+		int getLine() const {
+			return this->token->line;
+		}
+		std::string getLexeme() const {
+			return this->token->lexeme;
+		}
+		
+		private:
+			Token *token;
 };
 
 class BinaryOpNode : public Node {
 	public:
 		Node *left;
 		Node *right;
-		TokenType op; // operator
+		TokenType op; // operator. prob not necessary
 
-		BinaryOpNode(TokenType op, int line) : Node(op, literal, line) {
-			this->op = op;
+		BinaryOpNode(Token *token) : Node(token) {
+			this->op = token->type;
 		}
 
-		void printChildren() override {
-			print();
-			if (left) left->printChildren();
-			if (right) right->printChildren();
+		void printChildren(int indent) override {
+			print(indent);
+			if (left) left->printChildren(indent + 1);
+			if (right) right->printChildren(indent + 1);
 		}
 };
 
 class IntegerNode : public Node {
 	public:
-		IntegerNode(Literal literal, int line) : Node(INTEGER, literal, line) {
+		IntegerNode(Token *token) : Node(token) {
 		}
 };
 
@@ -93,7 +112,7 @@ void parser()
 	// while (token.type != END_OF_FILE)
 	// {
 	Node *root = parseExpression();
-	root->printChildren();
+	root->printChildren(1);
 
 	// }
 }
@@ -106,16 +125,10 @@ static Token advance()
 	return tokenList[++current];
 }
 
-static void addNode(TokenType type, Literal literal)
-{
-
-}
-
 static Token peek()
 {
 	return tokenList[current + 1];
 }
-
 
 // static Node *parseDeclaration()
 // {
@@ -125,31 +138,29 @@ static Token peek()
 // 	// }
 // }
 
-
-
 static Node *parseExpression()
 {
-	Node *root = NULL;
+	Node *root = parseTerm();
 	
-	Node *node = parseTerm();
-	if (node == NULL) {
+	if (root == NULL) {
 		throw_error(2, "Missing term at start of expression");
 	}
-	root = node;
 
 	while (tokenList[current].type != END_OF_FILE && tokenList[current].type != SEMICOLON)
 	{		
 		if (tokenList[current].type == PLUS || tokenList[current].type == MINUS)
 		{
-			BinaryOpNode *newRoot = new BinaryOpNode(tokenList[current].type,
-													 tokenList[current].line);
-													 
-			advance();
-			newRoot->left = node;
+			BinaryOpNode *newRoot = new BinaryOpNode(&tokenList[current]);
+			advance();			
+			newRoot->left = root;
 			newRoot->right = parseTerm();
 			root = newRoot;
 		}
+		else {
+			throw_error(2, "Error in parseExpression: unexpected token");
+		}
 	}
+
 	return root;
 }
 
@@ -165,7 +176,7 @@ static Node *parseTerm()
 
 	// (("*") factor)*
 	while (tokenList[current].type == MULT && peek().type == INTEGER) {
-		BinaryOpNode *newRoot = new BinaryOpNode(MULT, tokenList[current].line);
+		BinaryOpNode *newRoot = new BinaryOpNode(&tokenList[current]);
 		advance();
 
 		Node *newInt = parseFactor();
@@ -184,7 +195,7 @@ static Node *parseFactor()
 	Token token = tokenList[current];
 	if (token.type == INTEGER)
 	{
-		IntegerNode *node = new IntegerNode(token.literal, token.line);
+		IntegerNode *node = new IntegerNode(&tokenList[current]);
 		return node;
 	} else {
 		return NULL;
