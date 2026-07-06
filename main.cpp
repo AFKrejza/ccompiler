@@ -5,139 +5,55 @@
 #include <vector>
 #include <unordered_map>
 
+#include "main.hpp"
+
 /*
-	g++ main.cpp -o main && ./main source.c
-	include -DDEBUG compiler flag for extra info
+	g++ main.cpp parser.cpp -o main && ./main source.c
+	-DDEBUG to print all tokens
 
 	nasm -felf64 output.asm && ld output.o && ./a.out
 	echo $?
 
-	TODO: create a testing setup for each part of the compiler, not just codegen.
+	TODO: create a testing setup for each part of the compiler, not just codegen. In python.
+
+	int a = 5;
+	int b = 10;
+	int c = a + b;
+	return c;
 */
 
-void throw_error(int code, std::string msg);
-void throw_warn(int code, std::string msg);
-bool is_whitespace(char c);
-std::string read_source_code(char *file);
-char peek();
-char advance();
-bool parse_int(std::string lexeme);
-bool parse_identifier(std::string lexeme);
-void parse_string();
-bool isnum(char c);
-bool isAtEnd();
-void throw_invalid_identifier();
-void throw_invalid_identifier_start();
-void scanToken();
-bool is_alnum_underscore(char c);
-bool is_identifier_start(char c);
-std::string scanLexeme(char c);
-void populateKeywords();
-void populatePrintmap();
-bool parseInteger(std::string lexeme);
-int ctoi(char c);
 
-int current = 0; // i.e. the next unconsumed character is source[current]
-int column = 0;
-int line = 1;
+static std::string read_source_code(char *file);
 
-// like a union
-using Literal = std::variant<
-	std::monostate,
-	int,
-	std::string,
-	bool
->;
+// all related to the tokenizer
+static bool is_whitespace(char c);
+static char peek();
+static char advance();
+static bool parse_identifier(std::string lexeme);
+static void parse_string();
+static bool isnum(char c);
+static bool isAtEnd();
+static void scanToken();
+static bool is_alnum_underscore(char c);
+static bool is_identifier_start(char c);
+static std::string scanLexeme(char c);
+static void populateKeywords(std::unordered_map<TokenType, std::string> printmap);
+static bool parseInteger(std::string lexeme);
+static int ctoi(char c);
+static void printTokens();
 
-struct LiteralVisitor {
-	std::string operator()(std::monostate v) const {
-		return "empty";
-	}
-	std::string operator()(int v) const {
-		return std::to_string(v);
-	}
-	std::string operator()(std::string v) const {
-		return v;
-	}
-	std::string operator()(bool v) const {
-		return v ? "True" : "False";
-	}
-};
+// contains all symbols and keywords
+std::unordered_map<TokenType, std::string> populatePrintmap();
 
-enum TokenType {
-	SEMICOLON, PLUS, MINUS, MULT, ASSIGNMENT, OPEN_PARENTHESES, CLOSED_PARENTHESES, OPEN_SQUARE_BRACKET, CLOSED_SQUARE_BRACKET, OPEN_CURLY_BRACE, CLOSED_CURLY_BRACE,
+static int current = 0; // i.e. the next unconsumed character is source[current]
+static int column = 0;
+static int line = 1;
 
-	GREATER_THAN, LESS_THAN, EQUAL_TO, GREATER_OR_EQUAL, LESSER_OR_EQUAL,
-	NOT_EQUAL,
-
-	LOGICAL_NOT, LOGICAL_AND, LOGICAL_OR,
-	BITWISE_NOT, BITWISE_AND, BITWISE_OR,
-
-	IDENTIFIER, CHAR, SHORT, INT, LONG, STRING_LITERAL, INTEGER,
-
-	IF, ELSE, 
-
-	RETURN,
-
-	END_OF_FILE,
-};
-
-std::unordered_map<TokenType, std::string> printmap;
-
-class Token {
-	public:
-		TokenType type;
-		std::string lexeme; // exact source text
-		Literal literal;
-		int line;
-		int column; // TODO: broken
-		int length; // TODO: broken
-
-		Token(TokenType type, int length, std::string lexeme, Literal literal, int line, int column) {
-			this->type = type;
-			this->lexeme = lexeme;
-			this->literal = literal;
-			this->line = line;
-			this->column = column;
-			this->length = length;
-		}
-
-		void print()
-		{
-			std::cout << "   Type: " << token_type_to_string(type) << std::endl;
-			std::cout << " Lexeme: " << lexeme << std::endl;
-			std::cout << "Literal: " << std::visit(LiteralVisitor{}, literal) << std::endl;
-			std::cout << "   Line: " << line << std::endl;
-			std::cout << " Column: " << column << std::endl;
-			std::cout << " Length: " << length << "\n" << std::endl;
-		}
-
-	private:
-		std::string token_type_to_string(TokenType type)
-		{
-			int int_type = (int)type;
-
-			auto it = printmap.find(type);
-			if (it != printmap.end()) {
-				return it->second;
-			}
-			throw_error(3, "Couldn't find token to be printed. ???");
-			return "";
-		}
-
-		std::string literal_to_string(Literal literal)
-		{
-			std::string string = typeid(literal).name();
-			return string;
-		}
-};
-
-
-
+const std::unordered_map<TokenType, std::string> Token::printmap = populatePrintmap();
 void addToken(TokenType type, int length, std::string lexeme, Literal literal = std::monostate{});
 
 std::string source;
-std::vector<Token> tokenlist;
+std::vector<Token> tokenList;
 std::unordered_map<std::string, TokenType> keywords;
 
 int main(int argc, char *argv[])
@@ -147,8 +63,7 @@ int main(int argc, char *argv[])
 	
 	source = read_source_code(argv[1]);	
 
-	populatePrintmap();
-	populateKeywords();
+	populateKeywords(Token::printmap);
 
 	while (!isAtEnd())
 	{
@@ -156,14 +71,16 @@ int main(int argc, char *argv[])
 	}
 	addToken(TokenType::END_OF_FILE, 1, "");
 
-	int len = tokenlist.size();
-	std::cout << "tokenlist size: " << len << std::endl;
-	for (int i = 0; i < len; i++)
-	{
-		std::cout << tokenlist[i].lexeme << std::endl;
-	}
-	
-	
+	int len = tokenList.size();
+	std::cout << "tokenList size: " << len << std::endl;
+	#ifdef DEBUG
+		printTokens();
+	#endif
+
+	parser();
+
+
+
 	// output.close();
 	std::cout << "success" << std::endl;
 	return 0;
@@ -172,9 +89,6 @@ int main(int argc, char *argv[])
 void scanToken()
 {
 	char c = advance();
-	#ifdef DEBUG
-		std::cout << "Pre-switch: " << c << std::endl;
-	#endif
 
 	switch (c)
 	{
@@ -218,10 +132,10 @@ void scanToken()
 			break;
 		case '=':
 			if (peek() == '>') {
-				addToken(TokenType::GREATER_OR_EQUAL, 2, ">=");
+				addToken(TokenType::GREATER_OR_EQUAL, 2, "=>");
 			}
 			else if (peek() == '<') {
-				addToken(TokenType::LESSER_OR_EQUAL, 2, "<=");
+				addToken(TokenType::LESSER_OR_EQUAL, 2, "=<");
 			}
 			else if (peek() == '=') {
 				addToken(TokenType::EQUAL_TO, 2, "==");
@@ -268,11 +182,8 @@ void scanToken()
 		default:
 			// now it's more than a 1-character token, so parse it FIRST, THEN match
 			int start = current;
-
-			
-
 			std::string lexeme = scanLexeme(c);
-			std::cout << "New lexeme: " << lexeme << std::endl;
+
 			TokenType type;
 			auto it = keywords.find(lexeme);
 			if (it != keywords.end()) {
@@ -335,12 +246,6 @@ bool parse_identifier(std::string lexeme)
 	}
 	addToken(TokenType::IDENTIFIER, current - start, lexeme);
 
-	#ifdef DEBUG
-		std::cout << "parse_identifier: Start: " << start
-		<< ", Current: " << current << ", Substr: " << 
-		source.substr(start, current - start) << std::endl;
-	#endif
-
 	return true;
 }
 
@@ -355,8 +260,7 @@ bool isnum(char c)
 void addToken(TokenType type, int length, std::string lexeme, Literal literal)
 {
 	Token token(type, length, lexeme, literal, line, column);
-	tokenlist.push_back(token);
-	token.print();
+	tokenList.push_back(token);
 }
 
 
@@ -364,18 +268,18 @@ void addToken(TokenType type, int length, std::string lexeme, Literal literal)
 void throw_invalid_identifier()
 {
 	std::string s = "Invalid identifier symbol on line ";
-	s.append(std::to_string(line))
-	 .append(" column ")
-	 .append(std::to_string(column));
+	s.append(std::to_string(line));
+	//  .append(" column ")
+	//  .append(std::to_string(column));
 	throw_error(2, s);
 }
 
 void throw_invalid_identifier_start()
 {
 	std::string s = "Invalid identifier start symbol on line ";
-	s.append(std::to_string(line))
-	 .append(" column ")
-	 .append(std::to_string(column));
+	s.append(std::to_string(line));
+	//  .append(" column ")
+	//  .append(std::to_string(column));
 	throw_error(2, s);
 }
 
@@ -419,13 +323,13 @@ char advance()
 
 void throw_error(int code, std::string msg)
 {
-	std::cerr << "Error: " << msg << std::endl;
+	std::cerr << "Error on line " << line << ": " << msg << std::endl;
 	exit(code);
 }
 
 void throw_warn(int code, std::string msg)
 {
-	std::cerr << "Warning :" << msg << std::endl;
+	std::cerr << "Warning on line " << line << ": " << msg << std::endl;
 }
 
 std::string read_source_code(char *filename)
@@ -472,16 +376,7 @@ std::string scanLexeme(char c)
 	}
 	lexeme = source.substr(start, current - start);
 
-	#ifdef DEBUG
-		std::cout << "NEW LEXEME: " << lexeme << "length: " << lexeme.length() << std::endl;
-	#endif
-
 	return lexeme;
-}
-
-bool parse_keyword(std::string lexeme)
-{
-	return true;
 }
 
 // only does positive ints
@@ -507,9 +402,41 @@ int ctoi(char c)
 	return c - '0';
 }
 
-// contains all symbols and keywords
-void populatePrintmap()
+void populateKeywords(std::unordered_map<TokenType, std::string> printmap)
 {
+	const std::vector<TokenType> keywordFilter = {
+		CHAR, SHORT, INT, LONG, IF, ELSE, RETURN
+	};
+
+	int len = keywordFilter.size();
+	for (int i = 0; i < len; i++)
+	{
+		auto it = printmap.find(keywordFilter[i]);
+		if (it != printmap.end()) {
+			keywords[it->second] = it->first;
+		}
+	}
+}
+
+void printTokens()
+{
+	int len = tokenList.size();
+	for (int i = 0; i < len; i++)
+	{
+		tokenList[i].print();
+	}
+	std::cout << "End of Tokens. Lexeme List:" << std::endl;
+	for (int i = 0; i < len; i++)
+	{
+		std::cout << tokenList[i].lexeme << std::endl;
+	}
+}
+
+// contains all symbols and keywords
+std::unordered_map<TokenType, std::string> populatePrintmap()
+{
+	std::unordered_map<TokenType, std::string> printmap;
+	
 	printmap[SEMICOLON] = "semicolon";
 	printmap[PLUS] = "plus";
 	printmap[MINUS] = "minus";
@@ -544,20 +471,6 @@ void populatePrintmap()
 	printmap[ELSE] = "else";
 	printmap[RETURN] = "return";
 	printmap[END_OF_FILE] = "end_of_file";
-}
-
-void populateKeywords()
-{
-	const std::vector<TokenType> keywordFilter = {
-		CHAR, SHORT, INT, LONG, IF, ELSE, RETURN
-	};
-
-	int len = keywordFilter.size();
-	for (int i = 0; i < len; i++)
-	{
-		auto it = printmap.find(keywordFilter[i]);
-		if (it != printmap.end()) {
-			keywords[it->second] = it->first;
-		}
-	}
-}
+	
+	return printmap;
+};
