@@ -9,7 +9,14 @@
 
 /*
 	g++ main.cpp parser.cpp -o main && ./main source.c
+	
 	-DDEBUG to print all tokens
+
+	-Wall -Wextra -Werror -Wshadow -Wuninitialized
+
+	Also use
+	-fsanitize=address,undefined
+	-O2 for testing and non-debugging builds
 
 	nasm -felf64 output.asm && ld output.o && ./a.out
 	echo $?
@@ -129,6 +136,9 @@ void scanToken()
 			break;
 		case ']':
 			addToken(TokenType::CLOSED_SQUARE_BRACKET, 1, "]");
+			break;
+		case ',':
+			addToken(TokenType::COMMA, 1, ",");
 			break;
 		case '=':
 			if (peek() == '>') {
@@ -448,6 +458,7 @@ std::unordered_map<TokenType, std::string> populatePrintmap()
 	printmap[CLOSED_SQUARE_BRACKET] = "closed_square_bracket";
 	printmap[OPEN_CURLY_BRACE] = "open_curly_brace";
 	printmap[CLOSED_CURLY_BRACE] = "closed_curly_brace";
+	printmap[COMMA] = "comma";
 	printmap[GREATER_THAN] = "greater_than";
 	printmap[LESS_THAN] = "less_than";
 	printmap[EQUAL_TO] = "equal_to";

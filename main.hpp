@@ -20,6 +20,7 @@ using Literal = std::variant<
 
 struct LiteralVisitor {
 	std::string operator()(std::monostate v) const {
+		(void) v;
 		return "empty";
 	}
 	std::string operator()(int v) const {
@@ -34,7 +35,9 @@ struct LiteralVisitor {
 };
 
 enum TokenType {
-	SEMICOLON, PLUS, MINUS, MULT, ASSIGNMENT, OPEN_PARENTHESES, CLOSED_PARENTHESES, OPEN_SQUARE_BRACKET, CLOSED_SQUARE_BRACKET, OPEN_CURLY_BRACE, CLOSED_CURLY_BRACE,
+	SEMICOLON, PLUS, MINUS, MULT, ASSIGNMENT, OPEN_PARENTHESES, CLOSED_PARENTHESES,
+	OPEN_SQUARE_BRACKET, CLOSED_SQUARE_BRACKET, OPEN_CURLY_BRACE, CLOSED_CURLY_BRACE,
+	COMMA,
 
 	GREATER_THAN, LESS_THAN, EQUAL_TO, GREATER_OR_EQUAL, LESSER_OR_EQUAL,
 	NOT_EQUAL,

@@ -1,4 +1,6 @@
 #include <iostream>
+#include <vector>
+#include <cassert>
 
 class Node {
 
@@ -61,5 +63,8 @@ int main()
 
 	another->sayType(); // i get it now
 
-	
+	// std::vector<int> arr;
+	// arr.
+	int i = 5;
+	assert(i == 5);
 }
