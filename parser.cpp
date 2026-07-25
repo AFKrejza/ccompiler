@@ -25,191 +25,9 @@
 */
 
 #include "main.hpp"
-#include <cassert>
 
 extern std::vector<Token> tokenList;
 static int current = 0;
-
-static void printIndentLines(int indent)
-{
-	std::string indentation{};
-	std::string bar = "|";
-	for (int i = 0; i < indent - 1; i++) {
-		indentation.append(bar)
-					.append("   ");
-	}
-	indentation.append(bar)
-				.append("--");
-	std::cout << indentation;
-}
-
-class Node {
-
-	public:
-		Node *parent; // TODO: this is never set. Is this a mistake?
-
-		// TODO: the Program root node is the only one with children in this form.
-		// Make a GodNode class and remove children from here. Confusing.
-		std::vector<Node*> children;
-
-		Node(Token *token) : token(token) {} // TODO: learn initializer list syntax properly and use it in other places
-
-		virtual void print(int indent) {
-			printIndentLines(indent);
-			std::cout << typeName() << std::endl;
-		}
-
-		// runtime polymorphism
-		virtual void printChildren(int indent) {
-			print(indent);
-			for (Node *i: children) {
-				i->printChildren(indent + 1);
-			}
-		}
-
-		virtual std::string typeName() {
-			return "Node";
-		}
-
-
-		// TODO: these shouldn't exist for a lot of nodes. Reconsider storing the Token pointer as well.
-		// TODO: just store line or smth. Only what's necessary for ALL nodes.
-		TokenType getType() const {
-			return this->token->type;
-		}
-		Literal getLiteral() const {
-			return this->token->literal;
-		}
-		int getLine() const {
-			return this->token->line;
-		}
-		std::string getLexeme() const {
-			return this->token->lexeme;
-		}
-		
-		private:
-			Token *token;
-};
-
-class BinaryOpNode : public Node {
-	public:
-		Node *left;
-		Node *right;
-		TokenType op;
-
-		BinaryOpNode(Token *token) : Node(token) {
-			this->op = token->type;
-		}
-
-		void printChildren(int indent) override {
-			print(indent);
-			if (left) left->printChildren(indent + 1);
-			if (right) right->printChildren(indent + 1);
-		}
-
-		std::string typeName() override {
-			return "BinaryOpNode";
-		}
-};
-
-class IntegerNode : public Node {
-	public:
-		IntegerNode(Token *token) : Node(token) {
-		}
-
-		std::string typeName() override {
-			return "IntegerNode";
-		}
-};
-
-class Parameter {
-	public:
-		TokenType type;
-		std::string identifier;
-
-		Parameter(TokenType type, std::string identifier) {
-			this->type = type;
-			this->identifier = identifier;
-		}
-
-		void print(int indent) {
-			std::cout << Token::token_type_to_string(type) << " " << identifier << ", ";
-		}
-};
-
-class FuncDefNode : public Node {
-	public:
-		std::string identifier;
-		TokenType returnType;
-		std::vector<Parameter> paramList;
-
-		// must contain at least one return for each control path if returnType isn't void.
-		// should only contain statements?
-		std::vector<Node*> body;
-
-		FuncDefNode(Token *identifierToken, TokenType returnType) : Node(identifierToken) {
-			this->identifier = identifierToken->lexeme;
-			this->returnType = returnType;
-		}
-
-		void print(int indent) override {
-			printIndentLines(indent);
-			std::cout << typeName() << " " << Token::token_type_to_string(returnType) << " " << identifier;
-			std::cout << "(";
-			for (Parameter i : paramList) {
-				i.print(indent + 1);
-			}
-			std::cout << ")" << std::endl;
-
-		}
-
-		void printChildren(int indent) override {
-			print(indent);
-			for (Node *i : body) {
-				i->printChildren(indent + 1);
-			}
-
-		}
-
-		std::string typeName() override {
-			return "FuncDefNode";
-		}
-};
-
-// TODO: consider creating this. Perhaps it could make functions easier
-// to reason about?
-// class StatementNode : public Node {
-// 	public:
-
-// };
-
-class ReturnNode : public Node {
-	public:
-		Node *expression; // can be almost anything, including nothing.
-
-		ReturnNode(Token *token) : Node(token) {
-
-		}
-
-		std::string typeName() override {
-			return "ReturnNode";
-		}
-
-		void print(int indent) override {
-			printIndentLines(indent);
-			std::cout << typeName() << " " << std::endl;
-		}
-
-		void printChildren(int indent) override {
-			print(indent);
-			expression->printChildren(indent + 1);
-		}
-};
-
-// class IdentifierNode : Node {
-// 	public:
-// 		IdentifierNode()
-// }
 
 static Token advance(int advanceBy = 1);
 static Token retreat(int retreatBy = -1);
@@ -226,10 +44,10 @@ static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode);
 
 void parser()
 {
-	std::cout << "parseTokens" << std::endl;
+	fmt::print("parseTokens\n");
 
 	Token *temp = new Token();
-	Node *program = new Node(temp);
+	ProgramNode *program = new ProgramNode(temp);
 
 	while (tokenList[current].type != END_OF_FILE)
 	{
@@ -245,6 +63,9 @@ void parser()
 	}
 
 	program->printChildren(1);
+
+	// codegen(program);
+
 }
 
 // current points to the token that was returned to make
@@ -361,7 +182,7 @@ static Node *parseFuncDef()
 	}
 
 	funcNode->body = parseFuncBody(funcNode);
-	std::cout << funcNode->body[0]->typeName() << std::endl;
+	// fmt::print("{}\n", funcNode->body[0]->typeName());
 
 	return funcNode;
 }
@@ -396,11 +217,10 @@ static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode)
 	advance();
 
 	while (token().type != END_OF_FILE &&
-		   token().type != CLOSED_CURLY_BRACE) { // statements will consume their own closing braces
+		   token().type != CLOSED_CURLY_BRACE) {
 		if (token().type == RETURN)
 		{
 			ReturnNode *retNode = new ReturnNode(&tokenList[current]);
-			std::cout << retNode->typeName() << std::endl;	
 			advance();
 			retNode->expression = parseExpression();
 			body.push_back(retNode);
