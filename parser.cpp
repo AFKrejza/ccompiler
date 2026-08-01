@@ -42,7 +42,7 @@ static Node *parseFuncDef();
 static std::vector<Parameter> parseParamList();
 static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode);
 
-void parser()
+ProgramNode *parser()
 {
 	fmt::print("parseTokens\n");
 
@@ -64,8 +64,7 @@ void parser()
 
 	program->printChildren(1);
 
-	// codegen(program);
-
+	return program;
 }
 
 // current points to the token that was returned to make

@@ -8,7 +8,7 @@
 #include "main.hpp"
 
 /*
-	g++ main.cpp parser.cpp codegen.cpp -o main -lfmt && ./main source.c
+	g++ main.cpp parser.cpp lexer.cpp codegen.cpp -o main -lfmt && ./main source.c
 	
 	-DDEBUG to print all tokens
 
@@ -24,20 +24,31 @@
 	TODO: create a testing setup for each part of the compiler, not just codegen. In python.
 */
 
-static std::string read_source_code(char *file);
+
+static std::string preprocess(std::string fileName);
 
 int main(int argc, char *argv[])
 {
 	if (argc < 2) throw_error(1, "Missing argument");
 	if (argc > 2) throw_error(1, "Too many arguments (only takes one file)");
 	
-	std::string source = read_source_code(argv[1]);
+	std::string fileName = argv[1];
+	assert(fileName.at(fileName.length() - 1) == 'c' &&
+		   fileName.at(fileName.length() - 2) == '.');
+
+	fileName = fileName.substr(0, fileName.length() - 2);
+
+
+	std::string source = preprocess(fileName);
 
 	lexer(source);
 
-	parser();
+	ProgramNode *program = parser();
+
+	codegen(fileName, program);
 
 	fmt::print("success\n");
+
 	return 0;
 }
 
@@ -82,9 +93,10 @@ void throw_warn(int code, int line, std::string msg)
 }
 
 
-std::string read_source_code(char *filename)
+std::string readFile(std::string filename)
 {
-	std::ifstream file(filename);
+	const char *c_filename = filename.c_str();
+	std::ifstream file(c_filename);
 	if (!file.is_open()) throw_error_line(1, 0, "Couldn't open source file");
 
 	std::string source_code{
@@ -138,3 +150,19 @@ std::unordered_map<TokenType, std::string> populatePrintmap()
 	
 	return printmap;
 };
+
+static std::string preprocess(std::string fileName)
+{
+	std::string preprocessed = fileName;
+	preprocessed.append(".i");
+	std::string script = fmt::format("gcc -E -P {}.c -o {}", fileName, preprocessed);
+	fmt::print("{}\n", script);
+	system(script.c_str());
+	
+	std::string source = readFile(preprocessed);
+	
+	script = fmt::format("rm {}", preprocessed);
+	system(script.c_str());
+
+	return source;
+}

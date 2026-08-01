@@ -1,0 +1,29 @@
+expression -> term -> factor naming convention:
+expression for loose-binding + -
+term for tighter-binding like * /
+factor for things that have no operators or parentheses that explicitly group things.
+
+
+using EBNF (more or less):
+
+Terminals: type, IDENTIFIER, INTEGER
+
+Nonterminals are wrapped in <>
+Individual tokens are in ""
+[...] contains optional elements (zero or more times)
+{...} states repetition (zero or more times)
+(...) groups choices or sequences together
+
+
+2026-08-01 parser grammar:
+
+<program> = <function>
+<function> = "int" "IDENTIFIER" "(" <paramList> ")" <functionBody>
+<paramList> = [ <parameter> ("," <parameter>)* ]
+<parameter> = "int" IDENTIFIER
+<functionBody> = <ret>
+<ret> = "return" <expression>
+<expression> = <term> (("+" | "-") <term>)*
+<term> = <factor> { "*" <factor> }
+<factor> = INTEGER
+

@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+#include <format>
 
 #include <fmt/core.h>
 
@@ -13,6 +14,7 @@ void throw_error_line(int code, int line, std::string msg);
 void throw_warn(int code, int line, std::string msg);
 void throw_invalid_identifier(int line);
 void throw_invalid_identifier_start(int line);
+std::string readFile(std::string filename);
 
 // like a union
 using Literal = std::variant<
@@ -113,10 +115,6 @@ class Token {
 			return "";
 		}
 };
-
-
-// AST parser
-void parser();
 
 
 static void printIndentLines(int indent)
@@ -355,8 +353,9 @@ class ReturnNode : public Node {
 // 		IdentifierNode()
 // };
 
-
 void lexer(std::string src);
 
+// AST
+ProgramNode *parser();
 
-// void codegen(ProgramNode *program);
+void codegen(std::string fileName, ProgramNode *program);

@@ -7,3 +7,8 @@ test
 codegen_notes.cpp
 Sandler Nora - Writing a C Compiler - 2024.pdf
 Sandler Nora - Writing a C Compiler - 2024.pdf:Zone.Identifier
+*.i
+*.o
+out.s
+out
+test3.s
