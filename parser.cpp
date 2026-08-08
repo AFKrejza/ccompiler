@@ -47,23 +47,20 @@ ProgramNode *parser()
 {
 	fmt::print("parseTokens\n");
 
-	Token *temp = new Token();
-	ProgramNode *program = new ProgramNode(temp);
+	ProgramNode *program = new ProgramNode(0);
 
-	while (tokenList[current].type != END_OF_FILE)
+	while (token().tokenType != END_OF_FILE)
 	{
 		Node *node;
-		if (tokenList[current].type == INT &&
-			tokenList[current + 1].type == IDENTIFIER &&
-			tokenList[current + 2].type == OPEN_PARENTHESES) {
+		if (token().tokenType == INT &&
+			tokenList[current + 1].tokenType == IDENTIFIER &&
+			tokenList[current + 2].tokenType == OPEN_PARENTHESES) {
 
 			node = parseFuncDef();
 			program->children.push_back(node);
 			break;
 		}
 	}
-
-	// program->printChildren(1);
 
 	fmt::print("AST parsing completed\n");
 	return program;
@@ -75,13 +72,13 @@ ProgramNode *parser()
 static Token advance(int advanceBy)
 {
 	current = current + advanceBy;
-	return tokenList[current];
+	return token();
 }
 
 static Token retreat(int retreatBy)
 {
 	current = current - retreatBy;
-	return tokenList[current];
+	return token();
 }
 
 static Token peek(int peekBy)
@@ -96,7 +93,7 @@ static Token token()
 
 // static Node *parseDeclaration()
 // {
-// 	// if (tokenList[current].type == INT)
+// 	// if (token().type == INT)
 // 	// {
 
 // 	// }
@@ -106,12 +103,12 @@ static Node *parseExpression()
 {
 	Node *root = parseTerm();
 
-	fmt::print("Type: {}\n", tokenList[current].token_type_to_string(tokenList[current].type));
-	while (tokenList[current].type != END_OF_FILE && tokenList[current].type != SEMICOLON)
+	fmt::print("Type: {}\n", token().token_type_to_string(token().tokenType));
+	while (token().tokenType != END_OF_FILE && token().tokenType != SEMICOLON)
 	{		
-		if (tokenList[current].type == PLUS || tokenList[current].type == MINUS)
+		if (token().tokenType == PLUS || token().tokenType == MINUS)
 		{
-			BinaryOpNode *newRoot = new BinaryOpNode(&tokenList[current]);
+			BinaryOpNode *newRoot = new BinaryOpNode(token().line, token().tokenType);
 			advance();			
 			newRoot->left = root;
 			newRoot->right = parseTerm();
@@ -121,7 +118,7 @@ static Node *parseExpression()
 			break;
 		}
 	}
-	if (tokenList[current].type == SEMICOLON) advance();
+	if (token().tokenType == SEMICOLON) advance();
 
 	return root;
 }
@@ -132,8 +129,8 @@ static Node *parseTerm()
 	advance();
 
 	// (("*") factor)*
-	while (tokenList[current].type == ASTERISK && peek().type == INTEGER) {
-		BinaryOpNode *newRoot = new BinaryOpNode(&tokenList[current]);
+	while (token().tokenType == ASTERISK && peek().tokenType == INTEGER) {
+		BinaryOpNode *newRoot = new BinaryOpNode(token().line, token().tokenType);
 		advance();
 
 		Node *newInt = parseFactor();
@@ -149,10 +146,9 @@ static Node *parseTerm()
 
 static Node *parseFactor()
 {
-	Token token = tokenList[current];
-	if (token.type == INTEGER)
+	if (token().tokenType == INTEGER)
 	{
-		IntegerNode *node = new IntegerNode(&tokenList[current]);
+		IntegerNode *node = new IntegerNode(token().line, std::get<int>(token().literal));
 		return node;
 	} else {
 		return NULL;
@@ -163,11 +159,11 @@ static Node *parseFuncDef()
 {
 	Type *returnType = parseType();
 
-	FuncDefNode *funcNode = new FuncDefNode(&tokenList[current], returnType);
+	FuncDefNode *funcNode = new FuncDefNode(token().line, token().lexeme, returnType);
 	advance();
-	assert(tokenList[current].type == OPEN_PARENTHESES);
+	assert(token().tokenType == OPEN_PARENTHESES);
 	funcNode->paramList = parseParamList();
-	assert(tokenList.at(current).type == CLOSED_PARENTHESES);
+	assert(tokenList.at(current).tokenType == CLOSED_PARENTHESES);
 	advance();
 
 	funcNode->body = parseFuncBody(funcNode);
@@ -179,18 +175,18 @@ static std::vector<Parameter> parseParamList()
 	std::vector<Parameter> paramList;
 
 	advance();
-	if (token().type == CLOSED_PARENTHESES) {
+	if (token().tokenType == CLOSED_PARENTHESES) {
 		return paramList;
 	}
 
-	while (token().type == INT && peek(1).type == IDENTIFIER)
+	while (token().tokenType == INT && peek(1).tokenType == IDENTIFIER)
 	{
 		Type *paramType = parseType();
 		Parameter param{paramType, peek(1).lexeme};
 		
 		paramList.push_back(param);
 		
-		if (peek(2).type == COMMA)
+		if (peek(2).tokenType == COMMA)
 			advance(3);
 		else advance(2);
 	}
@@ -203,11 +199,11 @@ static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode)
 	std::vector<Node*> body;
 	advance();
 
-	while (token().type != END_OF_FILE &&
-		   token().type != CLOSED_CURLY_BRACE) {
-		if (token().type == RETURN)
+	while (token().tokenType != END_OF_FILE &&
+		   token().tokenType != CLOSED_CURLY_BRACE) {
+		if (token().tokenType == RETURN)
 		{
-			ReturnNode *retNode = new ReturnNode(&tokenList[current]);
+			ReturnNode *retNode = new ReturnNode(token().line);
 			advance();
 			retNode->expression = parseExpression();
 			body.push_back(retNode);
@@ -219,7 +215,7 @@ static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode)
 static Type *parseType()
 {
 	Type *type;
-	switch (tokenList.at(current).type)
+	switch (tokenList.at(current).tokenType)
 	{
 		case INT:
 			type = new IntType();
@@ -231,7 +227,7 @@ static Type *parseType()
 			return nullptr;
 	}
 
-	while (tokenList.at(current).type == ASTERISK)
+	while (tokenList.at(current).tokenType == ASTERISK)
 	{
 		type = new PointerType(type);
 		current++;

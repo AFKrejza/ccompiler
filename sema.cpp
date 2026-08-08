@@ -23,7 +23,7 @@ ProgramNode *sema(ProgramNode *ast)
 	FuncDefNode *main = dynamic_cast<FuncDefNode*>(ast->children[0]);
 	if (main == nullptr ||
 		main->typeName() != "FuncDefNode" ||
-		main->getLexeme() != "main"){
+		main->name != "main"){
 		throw_error(1, "Only the main function is currently supported.");
 	}
 	
@@ -36,7 +36,7 @@ ProgramNode *sema(ProgramNode *ast)
 			Type* exprType = evalType(retNode->expression);
 			
 			if (!typesEqual(main->returnType, exprType))
-				throw_error_line(1, node->getLine(), "Invalid return type");
+				throw_error_line(1, node->line, "Invalid return type");
 			
 			retNode->expression->type = exprType;
 		}
@@ -75,7 +75,7 @@ Type* getExpressionType(Node *node)
 		return leftType;
 	}
 	else {
-		throw_error_line(1, node->getLine(), "Operand type mismatch");
+		throw_error_line(1, node->line, "Operand type mismatch");
 		exit(1);
 	}
 }
@@ -101,21 +101,21 @@ Type* evalType(Node *node)
         leftType = new IntType();
     }
     else {
-        throw_error_line(1, node->getLine(), "Invalid Node type");
+        throw_error_line(1, node->line, "Invalid Node type");
     }
 
     if (auto *intNode = dynamic_cast<IntegerNode*>(node)) {
         rightType = new IntType();
     }
     else {
-        throw_error_line(1, node->getLine(), "Invalid Node type");
+        throw_error_line(1, node->line, "Invalid Node type");
     }
 
 	if (typesEqual(leftType, rightType)) {
 		return leftType;
 	}
 	else {
-		throw_error_line(1, node->getLine(), "Operand type mismatch");
+		throw_error_line(1, node->line, "Operand type mismatch");
 		exit(1);
 	}
 }

@@ -45,7 +45,7 @@ void codegen(std::string fileName, ProgramNode *program)
 
 	// only supports the main function
 	FuncDefNode *main = dynamic_cast<FuncDefNode*>(program->children[0]);
-	assert(main->typeName() == "FuncDefNode" && main->getLexeme() == "main");
+	assert(main->typeName() == "FuncDefNode" && main->name == "main");
 	emitFunction(main);
 	
 	emitProgramEnd();
@@ -109,9 +109,8 @@ static void emitFunction(FuncDefNode *node)
 
 static void emitReturn(ReturnNode *node)
 {
-	assert(node->expression->getType() == INTEGER);
-
 	IntegerNode *intNode = dynamic_cast<IntegerNode*>(node->expression);
+	assert(intNode != nullptr);
 
 	int val = intNode->value;
 

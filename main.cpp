@@ -10,7 +10,8 @@
 /*
 	g++ main.cpp parser.cpp lexer.cpp sema.cpp codegen.cpp -o main -lfmt && ./main source.c
 	
-	-DDEBUG to print all tokens
+	-DL to print token list
+	-DA to print validated AST
 
 	-Wall -Wextra -Werror -Wshadow -Wuninitialized
 
@@ -46,9 +47,17 @@ int main(int argc, char *argv[])
 
 	lexer(source);
 
+	#ifdef L
+	printTokens();
+	#endif
+
 	ProgramNode *ast = parser();
 
 	ProgramNode *vAst = sema(ast); // validated ast
+
+	#ifdef A
+	vAst->printChildren(1);
+	#endif
 
 	codegen(fileName, ast);
 

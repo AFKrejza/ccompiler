@@ -17,6 +17,7 @@ void throw_warn(int code, int line, std::string msg);
 void throw_invalid_identifier(int line);
 void throw_invalid_identifier_start(int line);
 std::string readFile(std::string filename);
+void printTokens();
 
 // like a union
 using Literal = std::variant<
@@ -67,15 +68,15 @@ enum TokenType {
 
 class Token {
 	public:
-		TokenType type;
+		TokenType tokenType;
 		std::string lexeme; // exact source text
 		Literal literal;
 		int line;
 		int column; // TODO: broken
 		int length; // TODO: broken
 
-		Token(TokenType type, int length, std::string lexeme, Literal literal, int line, int column) {
-			this->type = type;
+		Token(TokenType tokenType, int length, std::string lexeme, Literal literal, int line, int column) {
+			this->tokenType = tokenType;
 			this->lexeme = lexeme;
 			this->literal = literal;
 			this->line = line;
@@ -85,7 +86,7 @@ class Token {
 
 		// only for 0-initialization
 		Token() {
-			this->type = END_OF_FILE; // TODO: switch to NULL
+			this->tokenType = END_OF_FILE;
 			this->lexeme = "";
 			this->line = 0;
 			this->column = 0;
@@ -94,7 +95,7 @@ class Token {
 
 		void print()
 		{
-			fmt::print("   Type: {} \n", token_type_to_string(type));
+			fmt::print("   TokenType: {} \n", token_type_to_string(tokenType));
 			fmt::print(" Lexeme: {}\n", lexeme);
 			fmt::print("Literal: {}\n", std::visit(LiteralPrintVisitor{}, literal));
 			fmt::print("   Line: {}\n", line);
@@ -136,8 +137,9 @@ static void printIndentLines(int indent)
 class Node {
 	public:
 		Type *type = nullptr; // TODO: consider creating a statement node without a type
+		int line;
 
-		Node(Token *token) : token(token) {} // TODO: learn initializer list syntax properly and use it in other places
+		Node(int line) : line(line) {} // TODO: learn initializer list syntax properly and use it in other places
 
 		virtual void print(int indent) {
 			printIndentLines(indent);
@@ -151,24 +153,6 @@ class Node {
 		virtual std::string typeName() {
 			return "Node";
 		}
-
-		// TODO: these shouldn't exist for a lot of nodes. Reconsider storing the Token pointer as well.
-		// TODO: just store line or smth. Only what's necessary for ALL nodes.
-		TokenType getType() const {
-			return this->token->type;
-		}
-		Literal getLiteral() const {
-			return this->token->literal;
-		}
-		int getLine() const {
-			return this->token->line;
-		}
-		std::string getLexeme() const {
-			return this->token->lexeme;
-		}
-		
-		private:
-			Token *token;
 };
 
 
@@ -176,7 +160,7 @@ class ProgramNode : public Node {
 	public:
 		std::vector<Node*> children;
 
-		ProgramNode(Token *token) : Node(token) {}
+		ProgramNode(int line) : Node(line) {}
 
 		void printChildren(int indent) override {
 			print(indent);
@@ -191,15 +175,14 @@ class ProgramNode : public Node {
 		}
 };
 
-
 class BinaryOpNode : public Node {
 	public:
 		Node *left;
 		Node *right;
 		TokenType op;
 
-		BinaryOpNode(Token *token) : Node(token) {
-			this->op = token->type;
+		BinaryOpNode(int line, TokenType op) : Node(line) {
+			this->op = op;
 		}
 
 		void printChildren(int indent) override {
@@ -229,8 +212,8 @@ class IntegerNode : public Node {
 	public:
 		int value;
 
-		IntegerNode(Token *token) : Node(token) {
-			this->value = std::get<int>(token->literal);
+		IntegerNode(int line, int value) : Node(line) {
+			this->value = value;
 		}
 
 		std::string typeName() override {
@@ -274,8 +257,8 @@ class FuncDefNode : public Node {
 		// should only contain statements?
 		std::vector<Node*> body;
 
-		FuncDefNode(Token *nameToken, Type *returnType) : Node(nameToken) {
-			this->name = nameToken->lexeme;
+		FuncDefNode(int line, std::string name, Type *returnType) : Node(line) {
+			this->name = name;
 			this->returnType = returnType;
 		}
 
@@ -312,7 +295,7 @@ class ReturnNode : public Node {
 	public:
 		Node *expression = nullptr;
 
-		ReturnNode(Token *token) : Node(token) {}
+		ReturnNode(int line) : Node(line) {}
 
 		std::string typeName() override {
 			return "ReturnNode";

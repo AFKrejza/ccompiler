@@ -15,7 +15,6 @@ static std::string scanLexeme(char c);
 static void populateKeywords(std::unordered_map<TokenType, std::string> printmap);
 static bool parseInteger(std::string lexeme);
 static int ctoi(char c);
-static void printTokens();
 
 static void addToken(TokenType type, int length, std::string lexeme, Literal literal = std::monostate{});
 
@@ -48,10 +47,6 @@ void lexer(std::string src)
 
 	int len = tokenList.size();
 	fmt::print("tokenList size: {}\n", len);
-	#ifdef DEBUG
-		printTokens();
-	#endif
-	
 }
 
 
@@ -363,7 +358,7 @@ static int ctoi(char c)
 }
 
 
-static void printTokens()
+void printTokens()
 {
 	int len = tokenList.size();
 	for (int i = 0; i < len; i++)
