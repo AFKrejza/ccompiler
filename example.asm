@@ -19,19 +19,6 @@ _start:
 	; mov rdi, 50
 	syscall
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 ; nasm -felf64 test.asm && ld test.o && ./a.out
 
 ; https://cs.lmu.edu/~ray/notes/nasmtutorial/

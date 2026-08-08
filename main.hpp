@@ -9,6 +9,8 @@
 
 #include <fmt/core.h>
 
+#include "type.hpp"
+
 void throw_error(int code, std::string msg);
 void throw_error_line(int code, int line, std::string msg);
 void throw_warn(int code, int line, std::string msg);
@@ -43,9 +45,9 @@ struct LiteralPrintVisitor {
 
 
 enum TokenType {
-	SEMICOLON, PLUS, MINUS, MULT, ASSIGNMENT, OPEN_PARENTHESES, CLOSED_PARENTHESES,
+	SEMICOLON, PLUS, MINUS, ASSIGNMENT, OPEN_PARENTHESES, CLOSED_PARENTHESES,
 	OPEN_SQUARE_BRACKET, CLOSED_SQUARE_BRACKET, OPEN_CURLY_BRACE, CLOSED_CURLY_BRACE,
-	COMMA,
+	COMMA, ASTERISK,
 
 	GREATER_THAN, LESS_THAN, EQUAL_TO, GREATER_OR_EQUAL, LESSER_OR_EQUAL,
 	NOT_EQUAL,
@@ -132,9 +134,8 @@ static void printIndentLines(int indent)
 
 
 class Node {
-
 	public:
-		Node *parent; // TODO: this is never set. Is this a mistake?
+		Type *type = nullptr; // TODO: consider creating a statement node without a type
 
 		Node(Token *token) : token(token) {} // TODO: learn initializer list syntax properly and use it in other places
 
@@ -143,14 +144,9 @@ class Node {
 			fmt::print("{}\n", typeName());
 		}
 
-		// TODO: this is dumb. This design is strange.
-		virtual void printChildren(int indent) {
-			// assert(false);
-		}
+		virtual void printChildren(int indent) {}
 
-		virtual void killChildren() {
-
-		}
+		virtual void killChildren() {}
 
 		virtual std::string typeName() {
 			return "Node";
@@ -254,43 +250,42 @@ class IntegerNode : public Node {
 
 class Parameter {
 	public:
-		TokenType type;
+		Type *type;
 		std::string identifier;
 
-		Parameter(TokenType type, std::string identifier) {
+		Parameter(Type *type, std::string identifier) {
 			this->type = type;
 			this->identifier = identifier;
 		}
 
 		void print(int indent) {
-			fmt::print("{} {}, ", Token::token_type_to_string(type), identifier);
+			fmt::print("{} {}, ", type->typeName(), identifier);
 		}
 };
 
 
 class FuncDefNode : public Node {
 	public:
-		std::string identifier;
-		TokenType returnType;
+		std::string name;
+		Type *returnType;
 		std::vector<Parameter> paramList;
 
 		// must contain at least one return for each control path if returnType isn't void.
 		// should only contain statements?
 		std::vector<Node*> body;
 
-		FuncDefNode(Token *identifierToken, TokenType returnType) : Node(identifierToken) {
-			this->identifier = identifierToken->lexeme;
+		FuncDefNode(Token *nameToken, Type *returnType) : Node(nameToken) {
+			this->name = nameToken->lexeme;
 			this->returnType = returnType;
 		}
 
 		void print(int indent) override {
 			printIndentLines(indent);
-			fmt::print("{} {} {} (", typeName(), Token::token_type_to_string(returnType), identifier);
+			fmt::print("{} {} {} (", typeName(), returnType->typeName(), name);
 			for (Parameter i : paramList) {
 				i.print(indent + 1);
 			}
 			fmt::print(")\n");
-
 		}
 
 		void printChildren(int indent) override {
@@ -298,7 +293,6 @@ class FuncDefNode : public Node {
 			for (Node *i : body) {
 				i->printChildren(indent + 1);
 			}
-
 		}
 
 		void killChildren() override {
@@ -316,11 +310,9 @@ class FuncDefNode : public Node {
 
 class ReturnNode : public Node {
 	public:
-		Node *expression; // can be almost anything, including nothing.
+		Node *expression = nullptr;
 
-		ReturnNode(Token *token) : Node(token) {
-
-		}
+		ReturnNode(Token *token) : Node(token) {}
 
 		std::string typeName() override {
 			return "ReturnNode";
@@ -342,6 +334,11 @@ class ReturnNode : public Node {
 		}
 };
 
+// class VoidNode : public Node {
+// 	public:
+// 		VoidNode() : Node() {}
+// };
+
 // TODO: This would probably make it easier to structure functions
 // class StatementNode : public Node {
 // 	public:
@@ -357,5 +354,8 @@ void lexer(std::string src);
 
 // AST
 ProgramNode *parser();
+
+// Semantic Analysis
+ProgramNode *sema(ProgramNode *ast);
 
 void codegen(std::string fileName, ProgramNode *program);

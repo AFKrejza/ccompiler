@@ -51,8 +51,8 @@ void codegen(std::string fileName, ProgramNode *program)
 	emitProgramEnd();
 	output.close();
 
-	std::string result = readFile(outputFilename);
-	std::cout << result;
+	// std::string result = readFile(outputFilename);
+	// std::cout << result;
 
 	// assemble & link
 	int resp = system("gcc out.s -o out");
@@ -90,7 +90,7 @@ static void emitProgram(ProgramNode *node)
 //
 static void emitFunction(FuncDefNode *node)
 {
-	emitni(fmt::format("{}: ", node->identifier));
+	emitni(fmt::format("{}: ", node->name));
 
 	// prologue
 	emit("push rbp");

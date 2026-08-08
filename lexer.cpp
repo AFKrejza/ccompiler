@@ -79,7 +79,7 @@ static void scanToken()
 			addToken(TokenType::MINUS, 1, "-");
 			break;
 		case '*':
-			addToken(TokenType::MULT, 1, "*");
+			addToken(TokenType::ASTERISK, 1, "*");
 			break;
 		case '(':
 			addToken(TokenType::OPEN_PARENTHESES, 1, "(");

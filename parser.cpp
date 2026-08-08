@@ -41,6 +41,7 @@ static Node *parseFactor();
 static Node *parseFuncDef();
 static std::vector<Parameter> parseParamList();
 static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode);
+static Type *parseType();
 
 ProgramNode *parser()
 {
@@ -62,8 +63,9 @@ ProgramNode *parser()
 		}
 	}
 
-	program->printChildren(1);
+	// program->printChildren(1);
 
+	fmt::print("AST parsing completed\n");
 	return program;
 }
 
@@ -103,11 +105,8 @@ static Token token()
 static Node *parseExpression()
 {
 	Node *root = parseTerm();
-	
-	if (root == NULL) {
-		throw_error(2, "Missing term at start of expression");
-	}
 
+	fmt::print("Type: {}\n", tokenList[current].token_type_to_string(tokenList[current].type));
 	while (tokenList[current].type != END_OF_FILE && tokenList[current].type != SEMICOLON)
 	{		
 		if (tokenList[current].type == PLUS || tokenList[current].type == MINUS)
@@ -119,7 +118,7 @@ static Node *parseExpression()
 			root = newRoot;
 		}
 		else {
-			throw_error(2, "Error in parseExpression: unexpected token");
+			break;
 		}
 	}
 	if (tokenList[current].type == SEMICOLON) advance();
@@ -129,16 +128,11 @@ static Node *parseExpression()
 
 static Node *parseTerm()
 {
-	Node *root;
-
-	root = parseFactor();
-	if (root == NULL) {
-		throw_error(2, "parseTerm: Missing factor");
-	}
+	Node *root = parseFactor();
 	advance();
 
 	// (("*") factor)*
-	while (tokenList[current].type == MULT && peek().type == INTEGER) {
+	while (tokenList[current].type == ASTERISK && peek().type == INTEGER) {
 		BinaryOpNode *newRoot = new BinaryOpNode(&tokenList[current]);
 		advance();
 
@@ -167,22 +161,16 @@ static Node *parseFactor()
 
 static Node *parseFuncDef()
 {
-	advance();
-	FuncDefNode *funcNode = new FuncDefNode(&tokenList[current], tokenList[current - 1].type);
+	Type *returnType = parseType();
+
+	FuncDefNode *funcNode = new FuncDefNode(&tokenList[current], returnType);
 	advance();
 	assert(tokenList[current].type == OPEN_PARENTHESES);
 	funcNode->paramList = parseParamList();
 	assert(tokenList.at(current).type == CLOSED_PARENTHESES);
 	advance();
 
-	// TODO: implement function declarations.
-	if (tokenList.at(current).type != OPEN_CURLY_BRACE) {
-		throw_error(2, "Function declarations are not implemented. Only function definitions.");
-	}
-
 	funcNode->body = parseFuncBody(funcNode);
-	// fmt::print("{}\n", funcNode->body[0]->typeName());
-
 	return funcNode;
 }
 
@@ -197,8 +185,8 @@ static std::vector<Parameter> parseParamList()
 
 	while (token().type == INT && peek(1).type == IDENTIFIER)
 	{
-		Parameter param{token().type,
-						peek(1).lexeme};
+		Type *paramType = parseType();
+		Parameter param{paramType, peek(1).lexeme};
 		
 		paramList.push_back(param);
 		
@@ -226,4 +214,28 @@ static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode)
 		}
 	}
 	return body;
+}
+
+static Type *parseType()
+{
+	Type *type;
+	switch (tokenList.at(current).type)
+	{
+		case INT:
+			type = new IntType();
+			current++;
+			break;
+		
+		default:
+			throw_error_line(1, tokenList.at(current).line, "parseType failure: Invalid or missing type");
+			return nullptr;
+	}
+
+	while (tokenList.at(current).type == ASTERISK)
+	{
+		type = new PointerType(type);
+		current++;
+	}
+
+	return type;
 }

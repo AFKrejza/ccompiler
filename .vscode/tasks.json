@@ -10,8 +10,12 @@
                 "-DDEBUG",
                 "main.cpp",
                 "parser.cpp",
+                "lexer.cpp",
+                "sema.cpp",
+                "codegen.cpp",
                 "-o",
-                "main"
+                "main",
+                "-lfmt"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"

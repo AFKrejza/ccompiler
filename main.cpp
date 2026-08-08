@@ -8,7 +8,7 @@
 #include "main.hpp"
 
 /*
-	g++ main.cpp parser.cpp lexer.cpp codegen.cpp -o main -lfmt && ./main source.c
+	g++ main.cpp parser.cpp lexer.cpp sema.cpp codegen.cpp -o main -lfmt && ./main source.c
 	
 	-DDEBUG to print all tokens
 
@@ -20,6 +20,9 @@
 
 	nasm -felf64 output.asm && ld output.o && ./a.out
 	echo $?
+
+	To check gcc assembly: gcc INPUT.c -S -masm=intel
+	Try with various optimizations e.g. -O2
 
 	TODO: create a testing setup for each part of the compiler, not just codegen. In python.
 */
@@ -43,9 +46,11 @@ int main(int argc, char *argv[])
 
 	lexer(source);
 
-	ProgramNode *program = parser();
+	ProgramNode *ast = parser();
 
-	codegen(fileName, program);
+	ProgramNode *vAst = sema(ast); // validated ast
+
+	codegen(fileName, ast);
 
 	fmt::print("success\n");
 
@@ -73,7 +78,7 @@ void throw_invalid_identifier_start(int line)
 	throw_error_line(2, line, s);
 }
 
-
+// TODO: add yellow and red colors for warnings and errors
 void throw_error_line(int code, int line, std::string msg)
 {
 	std::cerr << "Error on line " << line << ": " << msg << std::endl;
@@ -84,6 +89,7 @@ void throw_error_line(int code, int line, std::string msg)
 void throw_error(int code, std::string msg)
 {
 	fmt::print("Error {}, {}\n", code, msg);
+	exit(code);
 }
 
 
@@ -115,7 +121,7 @@ std::unordered_map<TokenType, std::string> populatePrintmap()
 	printmap[SEMICOLON] = "semicolon";
 	printmap[PLUS] = "plus";
 	printmap[MINUS] = "minus";
-	printmap[MULT] = "mult";
+	printmap[ASTERISK] = "asterisk";
 	printmap[ASSIGNMENT] = "assignment";
 	printmap[OPEN_PARENTHESES] = "open_parentheses";
 	printmap[CLOSED_PARENTHESES] = "closed_parentheses";
