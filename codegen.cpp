@@ -3,31 +3,30 @@
 #include <filesystem>
 
 /*
-	nasm -felf64 output.asm && ld output.o for non-gcc linking
+	Convert TACO IR to assembly.
 
-	converting AST nodes to assembly. Each one will have a specific rule.
+	for each function: I need to track:
+	- how much stack is needed,
+	- how large each register must be (i'll just do 32 bit for now)
 
-	Rules:
+	Defines a function for translating each instruction to assembly.
 
-	program = Program(functionDefinition)
-	functionDefinition = Function(Identifier name, Instruction* instructions)
-	instruction = Mov(operand dst, operand src) | Ret
-	operand = Imm(int) | Register
-
-
+	also note that this is truly the last stage. There won't be any
+	more processing after this. All optimizations shall be done
+	in the previous stages.
 */
 
+std::string binaryOpToAsm(BinaryOp op);
 static void emit(std::string code);
 static void emitni(std::string code); // no indent
 static void emitProgramEnd();
 static void emitProgramStart();
-static void emitProgram(ProgramNode *node);
-static void emitFunction(FuncDefNode* node);
-static void emitReturn(ReturnNode *node);
+static void emitReturn(ReturnInstr* instr, int* offset);
+static void emitBinaryOp(BinaryInstr* instr, int* offset);
 
 std::ofstream output;
 
-void codegen(std::string fileName, ProgramNode *program)
+std::string codegen(std::string fileName, std::vector<Instruction*> ir)
 {
 	fmt::print("codegen\n");
 
@@ -42,31 +41,44 @@ void codegen(std::string fileName, ProgramNode *program)
 	output.open(outputFilename);
 	
 	emitProgramStart();
+	
+	// kinda just hardcode main. Check sema.cpp
+	emitni(fmt::format("main: "));
+	emit("push rbp");
+	emit("mov rbp, rsp\n");
 
-	// only supports the main function
-	FuncDefNode *main = dynamic_cast<FuncDefNode*>(program->children[0]);
-	assert(main->typeName() == "FuncDefNode" && main->name == "main");
-	emitFunction(main);
+
+	int offset = 0; // stack pointer offset
+
+	for (Instruction* i : ir)
+	{
+		if (auto* instr = dynamic_cast<ReturnInstr*>(i)) {
+			emitReturn(instr, &offset);
+		}
+		else if (auto* instr = dynamic_cast<BinaryInstr*>(i)) {
+			emitBinaryOp(instr, &offset);
+		}
+	}
 	
 	emitProgramEnd();
 	output.close();
 
-	// std::string result = readFile(outputFilename);
-	// std::cout << result;
-
 	// assemble & link
 	int resp = system("gcc out.s -o out");
 	if (resp != 0) throw_error(resp, "Failure in gcc assembling");
+
+	return outputFilename;
 }
 
-static void emit(std::string code)
+// pass one instruction at a time to it for readability
+static void emit(std::string instr)
 {
-	output << "    " << code << "\n";
+	output << "    " << instr << "\n";
 }
 
-static void emitni(std::string code)
+static void emitni(std::string instr)
 {
-	output << code << "\n";
+	output << instr << "\n";
 }
 
 static void emitProgramStart()
@@ -81,39 +93,77 @@ static void emitProgramEnd()
 	emitni(str);
 }
 
-// could be cleaner
-static void emitProgram(ProgramNode *node)
+// contains each vreg and its offset
+static std::unordered_map<int, int> vregMap;
+
+static void emitReturn(ReturnInstr* instr, int* offset)
 {
+	emit("");
+	if (instr->operand.kind == OperandKind::Immediate) {
+		emit(fmt::format("mov eax, {}", instr->operand.val));
+	}
+	else if (instr->operand.kind == OperandKind::Temp) {
+		emit(fmt::format("mov eax, [rbp {}]", vregMap.at(instr->operand.val)));
+	}
 
-}
-
-//
-static void emitFunction(FuncDefNode *node)
-{
-	emitni(fmt::format("{}: ", node->name));
-
-	// prologue
-	emit("push rbp");
-	emit("mov rbp, rsp");
-
-	ReturnNode *ret = dynamic_cast<ReturnNode*>(node->body[0]);
-	assert(ret->typeName() == "ReturnNode");
-	emitReturn(ret); 	
-
-	// epilogue
 	emit("mov rsp, rbp");
 	emit("pop rbp");
 	emit("ret");
 }
 
+// TODO: add a size field to Operand! easy solution.
 
-static void emitReturn(ReturnNode *node)
+static void emitBinaryOp(BinaryInstr* instr, int* offset)
 {
-	IntegerNode *intNode = dynamic_cast<IntegerNode*>(node->expression);
-	assert(intNode != nullptr);
+	vregMap.insert({instr->dest.val, *offset -= 4});
 
-	int val = intNode->value;
+	std::string op = binaryOpToAsm(instr->op);
 
-	emit(fmt::format("mov eax, {}", val));
+	// these could be merged
+	if (instr->left.kind == OperandKind::Immediate)
+	{
+		if (instr->right.kind == OperandKind::Immediate)
+		{
+			emit(fmt::format("mov DWORD PTR [rbp {}], {}", vregMap.at(instr->dest.val), instr->left.val));
+			emit(fmt::format("{} DWORD PTR [rbp {}], {}", op, vregMap.at(instr->dest.val), instr->right.val));
+		}
+		else if (instr->right.kind == OperandKind::Temp)
+		{
+			emit(fmt::format("mov r10d, {}", instr->left.val));
+			emit(fmt::format("{} r10d, [rbp {}]", op, vregMap.at(instr->right.val)));
+			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", vregMap.at(instr->dest.val)));
+		}
+	}
+	else if (instr->left.kind == OperandKind::Temp)
+	{
+		if (instr->right.kind == OperandKind::Immediate)
+		{
+			emit(fmt::format("mov r10d, [rbp {}]", vregMap.at(instr->left.val)));
+			emit(fmt::format("{} r10d, {}", op, instr->right.val));
+			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", vregMap.at(instr->dest.val)));
+		}
+		else if (instr->right.kind == OperandKind::Temp)
+		{
+			emit(fmt::format("mov r10d, [rbp {}]", vregMap.at(instr->left.val)));
+			emit(fmt::format("{} r10d, [rbp {}]", op, vregMap.at(instr->right.val)));
+			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", vregMap.at(instr->dest.val)));
+		}		
+	}
+}
+
+std::string binaryOpToAsm(BinaryOp op)
+{
+	switch (op)
+	{
+		case BinaryOp::ADD:
+			return "add";
+		case BinaryOp::SUB:
+			return "sub";
+		case BinaryOp::MUL:
+			return "imul";
+		default:
+			throw_error(1, "Error in binaryOpToAsm: Missing op translation");
+			exit(1);
+	}
 }
 

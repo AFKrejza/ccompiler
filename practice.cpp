@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <cassert>
+#include <unordered_map>
 
 class Node {
 
@@ -67,4 +68,12 @@ int main()
 	// arr.
 	int i = 5;
 	assert(i == 5);
+
+
+	std::unordered_map<int, int> vregMap;
+
+	vregMap.insert({1, 1});
+
+	int a = vregMap.at(1);
+	std::cout << a << "\n";
 }

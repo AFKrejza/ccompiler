@@ -12,10 +12,12 @@
                 "parser.cpp",
                 "lexer.cpp",
                 "sema.cpp",
+                "taco.cpp",
                 "codegen.cpp",
                 "-o",
                 "main",
-                "-lfmt"
+                "-lfmt",
+                "-DTAC -DAST -DASM"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"

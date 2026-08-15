@@ -27,6 +27,12 @@ using Literal = std::variant<
 	bool
 >;
 
+enum class BinaryOp {
+	ADD,
+	SUB,
+	MUL,
+	DIV
+};
 
 struct LiteralPrintVisitor {
 	std::string operator()(std::monostate v) const {
@@ -175,14 +181,17 @@ class ProgramNode : public Node {
 		}
 };
 
+BinaryOp TokenTypeToBinaryOp(TokenType op);
+std::string binaryOpToStr(BinaryOp op);
+
 class BinaryOpNode : public Node {
 	public:
 		Node *left;
 		Node *right;
-		TokenType op;
+		BinaryOp op;
 
 		BinaryOpNode(int line, TokenType op) : Node(line) {
-			this->op = op;
+			this->op = TokenTypeToBinaryOp(op);
 		}
 
 		void printChildren(int indent) override {
@@ -193,7 +202,7 @@ class BinaryOpNode : public Node {
 
 		void print(int indent) override {
 			printIndentLines(indent);
-			fmt::print("{} {}\n", typeName(), Token::token_type_to_string(op));
+			fmt::print("{} {}\n", typeName(), binaryOpToStr(op));
 		}
 
 		std::string typeName() override {
@@ -341,4 +350,89 @@ ProgramNode *parser();
 // Semantic Analysis
 ProgramNode *sema(ProgramNode *ast);
 
-void codegen(std::string fileName, ProgramNode *program);
+class Instruction {
+	public:
+		virtual ~Instruction() = default;
+
+		virtual void print(int indent) {}
+};
+
+std::string codegen(std::string fileName, std::vector<Instruction*> ir);
+
+enum class OperandKind {
+	Temp,
+	Immediate
+};
+
+struct Operand {
+	OperandKind kind;
+
+	// TODO: sizes are gonna be messed up. Needs to change.
+	int val; // can be a vReg or an immediate value depending on kind
+
+	static Operand Temp(int vReg) {
+		return { OperandKind::Temp, vReg };
+	}
+	static Operand Immediate(int value) {
+		return { OperandKind::Immediate, value };
+	}
+};
+
+
+static std::string operandToStr(Operand operand)
+{
+	switch (operand.kind)
+	{
+		case OperandKind::Immediate:
+			return fmt::format("Immediate({})", operand.val);
+		case OperandKind::Temp:
+			return fmt::format("Temp({})", operand.val);
+		default:
+			throw_error(1, "Operand has invalid kind. Hello??");
+			exit(1);
+	}
+}
+
+
+class BinaryInstr : public Instruction {
+	public:
+		Operand dest;
+		BinaryOp op;
+		Operand left;
+		Operand right;
+
+		BinaryInstr(Operand dest, BinaryOp op, Operand left, Operand right) {
+			this->dest = dest;
+			this->op = op;
+			this->left = left;
+			this->right = right;
+		}
+		
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("BinaryInstr {} = {} {} {}\n", operandToStr(dest),
+													  operandToStr(left),
+													  binaryOpToStr(op),
+													  operandToStr(right));
+		}
+};
+
+
+class ReturnInstr : public Instruction {
+	public:
+		Operand operand;
+
+		ReturnInstr(Operand operand) {
+			this->operand = operand;
+		}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("Return {}\n", operandToStr(operand));
+		}
+};
+
+
+// Three Address Code IR
+std::vector<Instruction*> taco(ProgramNode *program);
+

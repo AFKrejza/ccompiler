@@ -103,7 +103,6 @@ static Node *parseExpression()
 {
 	Node *root = parseTerm();
 
-	fmt::print("Type: {}\n", token().token_type_to_string(token().tokenType));
 	while (token().tokenType != END_OF_FILE && token().tokenType != SEMICOLON)
 	{		
 		if (token().tokenType == PLUS || token().tokenType == MINUS)

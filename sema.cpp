@@ -62,60 +62,25 @@ bool typesEqual(Type *first, Type *second)
 	return false;
 }
 
-// Creating a evalType method in each Node class would get rid of all these casts
-Type* getExpressionType(Node *node)
-{
-	Type* leftType;
-	Type* rightType;
-
-	leftType = evalType(node);
-	rightType = evalType(node);
-
-	if (typesEqual(leftType, rightType)) {
-		return leftType;
-	}
-	else {
-		throw_error_line(1, node->line, "Operand type mismatch");
-		exit(1);
-	}
-}
-
 // bottom-up typechecking
 Type* evalType(Node *node)
 {
-    Type* leftType;
-    Type* rightType;
-
-	if (node == nullptr) {
-		return new VoidType();
-	}
-
     if (auto *binOp = dynamic_cast<BinaryOpNode*>(node)) {
-        leftType = evalType(binOp->left);
-		rightType = evalType(binOp->right);
+        Type* leftType = evalType(binOp->left);
+		Type* rightType = evalType(binOp->right);
+		if (typesEqual(leftType, rightType)) {
+			return leftType;
+		}
+		else {
+			throw_error_line(1, node->line, "Operand type mismatch");
+			exit(1);
+		}
     }
-	else if (node == nullptr) {
-		return new VoidType();
-	}
     else if (auto *intNode = dynamic_cast<IntegerNode*>(node)) {
-        leftType = new IntType();
+        return new IntType();
     }
     else {
         throw_error_line(1, node->line, "Invalid Node type");
-    }
-
-    if (auto *intNode = dynamic_cast<IntegerNode*>(node)) {
-        rightType = new IntType();
-    }
-    else {
-        throw_error_line(1, node->line, "Invalid Node type");
-    }
-
-	if (typesEqual(leftType, rightType)) {
-		return leftType;
-	}
-	else {
-		throw_error_line(1, node->line, "Operand type mismatch");
 		exit(1);
-	}
+    }
 }

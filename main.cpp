@@ -8,10 +8,12 @@
 #include "main.hpp"
 
 /*
-	g++ main.cpp parser.cpp lexer.cpp sema.cpp codegen.cpp -o main -lfmt && ./main source.c
+	g++ main.cpp parser.cpp lexer.cpp sema.cpp taco.cpp codegen.cpp -o main -lfmt && ./main source.c
 	
-	-DL to print token list
-	-DA to print validated AST
+	-DLEX to print token list
+	-DAST to print validated AST
+	-DTAC to print TAC IR
+	-DASM to print assembly
 
 	-Wall -Wextra -Werror -Wshadow -Wuninitialized
 
@@ -47,7 +49,7 @@ int main(int argc, char *argv[])
 
 	lexer(source);
 
-	#ifdef L
+	#ifdef LEX
 	printTokens();
 	#endif
 
@@ -55,11 +57,24 @@ int main(int argc, char *argv[])
 
 	ProgramNode *vAst = sema(ast); // validated ast
 
-	#ifdef A
+	#ifdef AST
 	vAst->printChildren(1);
 	#endif
 
-	codegen(fileName, ast);
+	std::vector<Instruction*> ir = taco(vAst);
+
+	#ifdef TAC
+	for (Instruction *i : ir) {
+		i->print(1);
+	}
+	#endif
+
+	std::string outputFilename = codegen(fileName, ir);
+
+	#ifdef ASM
+	std::string result = readFile(outputFilename);
+	std::cout << "\n" << result << "\n";
+	#endif
 
 	fmt::print("success\n");
 
