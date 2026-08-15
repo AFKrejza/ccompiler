@@ -21,7 +21,6 @@
 	-fsanitize=address,undefined
 	-O2 for testing and non-debugging builds
 
-	nasm -felf64 output.asm && ld output.o && ./a.out
 	echo $?
 
 	To check gcc assembly: gcc INPUT.c -S -masm=intel

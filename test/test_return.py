@@ -57,3 +57,13 @@ class TestReturn:
 		source = "int main() { return 1 - 2 + 3; }"
 		assert compile_and_run(source) == 2
 
+	def test_add_sub_megalodon(self, compile_and_run):
+		# tested at 52,337 operations but it's unstable,
+		# more causes segfaults and I haven't looked into why.
+
+		# 20,001 operations seems okay.
+		megalodon = "int main() { return 1"
+		for i in range(10000):
+			megalodon = megalodon + " - 1 + 1"
+		megalodon = megalodon + ";}"
+		assert compile_and_run(megalodon) == 1
