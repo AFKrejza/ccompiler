@@ -21,8 +21,9 @@ static void emit(std::string code);
 static void emitni(std::string code); // no indent
 static void emitProgramEnd();
 static void emitProgramStart();
-static void emitReturn(ReturnInstr* instr, int* offset);
-static void emitBinaryOp(BinaryInstr* instr, int* offset);
+static void emitReturn(ReturnInstr* instr);
+static void emitBinaryInstr(BinaryInstr* instr);
+static void emitDeclaration(DeclarationInstr* instr);
 
 std::ofstream output;
 
@@ -47,16 +48,16 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir)
 	emit("push rbp");
 	emit("mov rbp, rsp\n");
 
-
-	int offset = 0; // stack pointer offset
-
 	for (Instruction* i : ir)
 	{
 		if (auto* instr = dynamic_cast<ReturnInstr*>(i)) {
-			emitReturn(instr, &offset);
+			emitReturn(instr);
 		}
 		else if (auto* instr = dynamic_cast<BinaryInstr*>(i)) {
-			emitBinaryOp(instr, &offset);
+			emitBinaryInstr(instr);
+		}
+		else if (auto* instr = dynamic_cast<DeclarationInstr*>(i)) {
+			emitDeclaration(instr);
 		}
 	}
 	
@@ -94,16 +95,19 @@ static void emitProgramEnd()
 }
 
 // contains each vreg and its offset
-static std::unordered_map<int, int> vregMap;
+// static std::unordered_map<int, int> vregMap;
 
-static void emitReturn(ReturnInstr* instr, int* offset)
+static void emitReturn(ReturnInstr* instr)
 {
 	emit("");
 	if (instr->operand.kind == OperandKind::Immediate) {
 		emit(fmt::format("mov eax, {}", instr->operand.val));
 	}
 	else if (instr->operand.kind == OperandKind::Temp) {
-		emit(fmt::format("mov eax, [rbp {}]", vregMap.at(instr->operand.val)));
+		emit(fmt::format("mov eax, [rbp {}]", instr->operand.offset));
+	}
+	else if (instr->operand.kind == OperandKind::Variable) {
+		emit(fmt::format("mov eax, [rbp {}]", instr->operand.offset));
 	}
 
 	emit("mov rsp, rbp");
@@ -111,42 +115,37 @@ static void emitReturn(ReturnInstr* instr, int* offset)
 	emit("ret");
 }
 
-// TODO: add a size field to Operand! easy solution.
-
-static void emitBinaryOp(BinaryInstr* instr, int* offset)
+static void emitBinaryInstr(BinaryInstr* instr)
 {
-	vregMap.insert({instr->dest.val, *offset -= 4});
-
 	std::string op = binaryOpToAsm(instr->op);
 
-	// these could be merged
 	if (instr->left.kind == OperandKind::Immediate)
 	{
 		if (instr->right.kind == OperandKind::Immediate)
 		{
-			emit(fmt::format("mov DWORD PTR [rbp {}], {}", vregMap.at(instr->dest.val), instr->left.val));
-			emit(fmt::format("{} DWORD PTR [rbp {}], {}", op, vregMap.at(instr->dest.val), instr->right.val));
+			emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->left.val));
+			emit(fmt::format("{} DWORD PTR [rbp {}], {}", op, instr->dest.offset, instr->right.val));
 		}
-		else if (instr->right.kind == OperandKind::Temp)
+		else if (instr->right.kind == OperandKind::Temp || instr->right.kind == OperandKind::Variable)
 		{
 			emit(fmt::format("mov r10d, {}", instr->left.val));
-			emit(fmt::format("{} r10d, [rbp {}]", op, vregMap.at(instr->right.val)));
-			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", vregMap.at(instr->dest.val)));
+			emit(fmt::format("{} r10d, [rbp {}]", op, instr->right.offset));
+			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
 		}
 	}
-	else if (instr->left.kind == OperandKind::Temp)
+	else if (instr->left.kind == OperandKind::Temp || instr->left.kind == OperandKind::Variable)
 	{
 		if (instr->right.kind == OperandKind::Immediate)
 		{
-			emit(fmt::format("mov r10d, [rbp {}]", vregMap.at(instr->left.val)));
+			emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
 			emit(fmt::format("{} r10d, {}", op, instr->right.val));
-			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", vregMap.at(instr->dest.val)));
+			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
 		}
-		else if (instr->right.kind == OperandKind::Temp)
+		else if (instr->right.kind == OperandKind::Temp || instr->right.kind == OperandKind::Variable)
 		{
-			emit(fmt::format("mov r10d, [rbp {}]", vregMap.at(instr->left.val)));
-			emit(fmt::format("{} r10d, [rbp {}]", op, vregMap.at(instr->right.val)));
-			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", vregMap.at(instr->dest.val)));
+			emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
+			emit(fmt::format("{} r10d, [rbp {}]", op, instr->right.offset));
+			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
 		}		
 	}
 }
@@ -167,3 +166,26 @@ std::string binaryOpToAsm(BinaryOp op)
 	}
 }
 
+static void emitDeclaration(DeclarationInstr* instr)
+{
+	// depends on what's in dest!!!
+	switch (instr->src.kind)
+	{
+		case OperandKind::Immediate:
+			emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->src.val));
+			break;
+
+		case OperandKind::Temp:
+			emit(fmt::format("mov r10d, [rbp {}]", instr->src.offset));
+			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
+			break;
+		
+		case OperandKind::Variable:
+			emit(fmt::format("mov r10d, [rbp {}]", instr->src.offset));
+			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
+			break;
+		
+		default:
+			throw_error(1, "what the helly");
+	}
+}

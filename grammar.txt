@@ -1,12 +1,10 @@
 expression -> term -> factor naming convention:
 expression for loose-binding + -
 term for tighter-binding like * /
-factor for things that have no operators or parentheses that explicitly group things.
-
+factor for things like parentheses that explicitly group things or things that have no operators.
 
 using EBNF (more or less):
 
-Terminals: type, IDENTIFIER, INTEGER
 
 Nonterminals are wrapped in <>
 Individual tokens are in ""
@@ -14,16 +12,22 @@ Individual tokens are in ""
 {...} states repetition (zero or more times)
 (...) groups choices or sequences together
 
+Terminals: type, IDENTIFIER, INTEGER
 
-2026-08-01 parser grammar:
+2026-08-20 parser grammar:
 
 <program> = <function>
-<function> = "int" "IDENTIFIER" "(" <paramList> ")" <functionBody>
-<paramList> = [ <parameter> ("," <parameter>)* ]
+<function> = "int" IDENTIFIER "(" <paramList> ")" <functionBody>
+<paramList> = [ <parameter> { "," <parameter> } ]
 <parameter> = "int" IDENTIFIER
-<functionBody> = <ret>
+<functionBody> =  { <statement> }
 <ret> = "return" <expression>
-<expression> = <term> (("+" | "-") <term>)*
+<expression> = <term> { ("+" | "-") <term> }
 <term> = <factor> { "*" <factor> }
-<factor> = INTEGER
+<factor> = INTEGER | IDENTIFIER
+<statement> = <ret> | <declaration>
+<declaration> = "int" IDENTIFIER "=" <expression>
+
+
+
 

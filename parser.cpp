@@ -38,10 +38,11 @@ static Token token();
 static Node *parseExpression();
 static Node *parseTerm();
 static Node *parseFactor();
-static Node *parseFuncDef();
+static Node *parseFuncDef(ProgramNode* parent);
 static std::vector<Parameter> parseParamList();
 static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode);
 static Type *parseType();
+static Node* parseDeclaration();
 
 ProgramNode *parser()
 {
@@ -56,9 +57,12 @@ ProgramNode *parser()
 			tokenList[current + 1].tokenType == IDENTIFIER &&
 			tokenList[current + 2].tokenType == OPEN_PARENTHESES) {
 
-			node = parseFuncDef();
+			node = parseFuncDef(program);
 			program->children.push_back(node);
 			break;
+		}
+		else {
+			throw_error_line(1, token().line, fmt::format("Parser failure: no rule for token {}", token().token_type_to_string(token().tokenType)));
 		}
 	}
 
@@ -91,20 +95,12 @@ static Token token()
 	return tokenList.at(current);
 }
 
-// static Node *parseDeclaration()
-// {
-// 	// if (token().type == INT)
-// 	// {
-
-// 	// }
-// }
-
 static Node *parseExpression()
 {
 	Node *root = parseTerm();
 
 	while (token().tokenType != END_OF_FILE && token().tokenType != SEMICOLON)
-	{		
+	{
 		if (token().tokenType == PLUS || token().tokenType == MINUS)
 		{
 			BinaryOpNode *newRoot = new BinaryOpNode(token().line, token().tokenType);
@@ -115,6 +111,7 @@ static Node *parseExpression()
 		}
 		else {
 			break;
+			// throw_error_line(1, token().line, fmt::format("parseExpression: no rule for token {}\n", token().token_type_to_string(token().tokenType)));
 		}
 	}
 	if (token().tokenType == SEMICOLON) advance();
@@ -147,18 +144,24 @@ static Node *parseFactor()
 {
 	if (token().tokenType == INTEGER)
 	{
-		IntegerNode *node = new IntegerNode(token().line, std::get<int>(token().literal));
-		return node;
-	} else {
+		return new ImmediateNode(token().line, std::get<int>(token().literal));
+	}
+	else if (token().tokenType == IDENTIFIER)
+	{
+		token().print();
+		return new VariableNode(token().line, token().lexeme);
+	}
+	else {
+		throw_error_line(1, token().line, "Invalid factor. idk if this error should exist");
 		return NULL;
 	}
 }
 
-static Node *parseFuncDef()
+static Node *parseFuncDef(ProgramNode* parent)
 {
 	Type *returnType = parseType();
 
-	FuncDefNode *funcNode = new FuncDefNode(token().line, token().lexeme, returnType);
+	FuncDefNode *funcNode = new FuncDefNode(token().line, parent, token().lexeme, returnType);
 	advance();
 	assert(token().tokenType == OPEN_PARENTHESES);
 	funcNode->paramList = parseParamList();
@@ -199,13 +202,23 @@ static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode)
 	advance();
 
 	while (token().tokenType != END_OF_FILE &&
-		   token().tokenType != CLOSED_CURLY_BRACE) {
+		   token().tokenType != CLOSED_CURLY_BRACE)
+	{
 		if (token().tokenType == RETURN)
 		{
 			ReturnNode *retNode = new ReturnNode(token().line);
 			advance();
 			retNode->expression = parseExpression();
 			body.push_back(retNode);
+		}
+		else if (token().tokenType == INT &&
+				 peek(1).tokenType == IDENTIFIER &&
+				 peek(2).tokenType == ASSIGNMENT)
+		{
+			body.push_back(parseDeclaration());
+		}
+		else {
+			throw_error_line(1, token().line, fmt::format("parseFuncBody failure to parse {}", token().token_type_to_string(token().tokenType)));
 		}
 	}
 	return body;
@@ -218,7 +231,7 @@ static Type *parseType()
 	{
 		case INT:
 			type = new IntType();
-			current++;
+			advance();
 			break;
 		
 		default:
@@ -229,8 +242,21 @@ static Type *parseType()
 	while (tokenList.at(current).tokenType == ASTERISK)
 	{
 		type = new PointerType(type);
-		current++;
+		advance();
 	}
 
 	return type;
+}
+
+static Node* parseDeclaration()
+{
+	Type* type = parseType();
+
+	auto* node = new DeclarationNode(token().line, token().lexeme, type);
+	
+	advance();
+	assert(token().tokenType == ASSIGNMENT);
+	advance();
+	node->expression = parseExpression();
+	return node;	
 }

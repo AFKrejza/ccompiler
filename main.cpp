@@ -26,7 +26,7 @@
 	To check gcc assembly: gcc INPUT.c -S -masm=intel
 	Try with various optimizations e.g. -O2
 
-	TODO: create a testing setup for each part of the compiler, not just codegen. In python.
+	TODO: create a testing setup for each part of the compiler, not just codegen
 */
 
 

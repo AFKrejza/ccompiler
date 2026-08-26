@@ -18,13 +18,23 @@ class Type {
 		}
 };
 
+// TODO: sizes will have to be redone since you can do stuff like char c = int64max
+// learn how gcc does it with instructions like movsx and movzx
+class ImmediateType : public Type {
+	public:
+		ImmediateType() : Type(4, true) {}
+
+		std::string typeName() override {
+			return "ImmediateType";
+		}
+};
+
 class IntType : public Type {
 	public:
 		IntType() : Type(4, true) {}
 
 		std::string typeName() override {
-			std::string name = "IntType";
-			return name;
+			return "IntType";
 		}
 };
 
@@ -46,7 +56,6 @@ class VoidType : public Type {
 		VoidType() : Type(0, true) {}
 
 		std::string typeName() override {
-			std::string name = "VoidType";
-			return name;
+			return "VoidType";
 		}
 };

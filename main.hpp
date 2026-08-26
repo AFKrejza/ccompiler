@@ -9,7 +9,8 @@
 
 #include <fmt/core.h>
 
-#include "type.hpp"
+// #include "type.hpp"
+#include "scope.hpp"
 
 void throw_error(int code, std::string msg);
 void throw_error_line(int code, int line, std::string msg);
@@ -145,7 +146,7 @@ class Node {
 		Type *type = nullptr; // TODO: consider creating a statement node without a type
 		int line;
 
-		Node(int line) : line(line) {} // TODO: learn initializer list syntax properly and use it in other places
+		Node(int line) : line(line) {} // TODO: use initializer list syntax in other places
 
 		virtual void print(int indent) {
 			printIndentLines(indent);
@@ -165,6 +166,8 @@ class Node {
 class ProgramNode : public Node {
 	public:
 		std::vector<Node*> children;
+		// each locally scoped symbol has a name and Attributes
+		std::unordered_map<std::string, Attrs> scope;
 
 		ProgramNode(int line) : Node(line) {}
 
@@ -177,7 +180,11 @@ class ProgramNode : public Node {
 
 		void print(int indent) override {
 			printIndentLines(indent);
-			fmt::print("{}\n", "ProgramNode");
+			fmt::print("{}\n", typeName());
+		}
+
+		std::string typeName() override {
+			return "ProgramNode";
 		}
 };
 
@@ -217,16 +224,16 @@ class BinaryOpNode : public Node {
 };
 
 
-class IntegerNode : public Node {
+class ImmediateNode : public Node {
 	public:
 		int value;
 
-		IntegerNode(int line, int value) : Node(line) {
+		ImmediateNode(int line, int value) : Node(line) {
 			this->value = value;
 		}
 
 		std::string typeName() override {
-			return "IntegerNode";
+			return "ImmediateNode";
 		}
 
 		void printChildren(int indent) {
@@ -235,7 +242,30 @@ class IntegerNode : public Node {
 
 		void print(int indent) override {
 			printIndentLines(indent);
-			fmt::print("IntegerNode {}\n", value);
+			fmt::print("ImmediateNode {}\n", value);
+		}
+};
+
+
+class VariableNode : public Node {
+	public:
+		std::string name;
+
+		VariableNode(int line, std::string name) : Node(line) {
+			this->name = name;
+		}
+
+		std::string typeName() override {
+			return "VariableNode";
+		}
+
+		void printChildren(int indent) {
+			print(indent);
+		}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("VariableNode {}\n", name);
 		}
 };
 
@@ -261,13 +291,19 @@ class FuncDefNode : public Node {
 		std::string name;
 		Type *returnType;
 		std::vector<Parameter> paramList;
+		int frameSize = 0;
+		Node* parent;
+
+		// each locally scoped symbol has a name and Attributes
+		std::unordered_map<std::string, Attrs> scope;
 
 		// must contain at least one return for each control path if returnType isn't void.
 		// should only contain statements?
 		std::vector<Node*> body;
 
-		FuncDefNode(int line, std::string name, Type *returnType) : Node(line) {
+		FuncDefNode(int line, Node* parent, std::string name, Type *returnType) : Node(line) {
 			this->name = name;
+			this->parent = parent;
 			this->returnType = returnType;
 		}
 
@@ -326,6 +362,33 @@ class ReturnNode : public Node {
 		}
 };
 
+class DeclarationNode : public Node {
+	public:
+		std::string name;
+		Type* type;
+		Node* expression = nullptr;
+
+		DeclarationNode(int line, std::string name, Type* type, Node* expression = nullptr) : Node(line) {
+			this->name = name;
+			this->type = type;
+			this->expression = expression;
+		}
+
+		std::string typeName() override {
+			return "DeclarationNode";
+		}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("{} {} \n", typeName(), name);
+		}
+
+		void printChildren(int indent) override {
+			print(indent);
+			expression->printChildren(indent + 1);
+		}
+	};
+
 // class VoidNode : public Node {
 // 	public:
 // 		VoidNode() : Node() {}
@@ -361,22 +424,38 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir);
 
 enum class OperandKind {
 	Temp,
-	Immediate
+	Immediate,
+	Variable
 };
 
+// Created in TACO and used in codegen
 struct Operand {
 	OperandKind kind;
 
-	// TODO: sizes are gonna be messed up. Needs to change.
-	int val; // can be a vReg or an immediate value depending on kind
+	// TODO: perhaps set a limit of i64 for any one value. Add a validation phase somewhere
+	// for individual values. Overflow should be allowed.
+	int val;
 
-	static Operand Temp(int vReg) {
-		return { OperandKind::Temp, vReg };
+	int offset = 0;
+	std::string name;
+
+	// vReg number and stack offset
+	static Operand Temp(int vReg, int offset) {
+		return { OperandKind::Temp, vReg, offset };
 	}
+	// just the immediate value.
+	// TODO:I should add a check to ensure that it's within 64 bit
+	// (change that to a long everywhere)
 	static Operand Immediate(int value) {
 		return { OperandKind::Immediate, value };
 	}
+
+	static Operand Variable(std::string name, int offset) {
+		return { OperandKind::Variable, 0, offset, name };
+	}
 };
+
+// TODO: need a derived class for lvalues ?
 
 
 static std::string operandToStr(Operand operand)
@@ -386,7 +465,9 @@ static std::string operandToStr(Operand operand)
 		case OperandKind::Immediate:
 			return fmt::format("Immediate({})", operand.val);
 		case OperandKind::Temp:
-			return fmt::format("Temp({})", operand.val);
+			return fmt::format("Temp({}, {})", operand.val, operand.offset);
+		case OperandKind::Variable:
+			return fmt::format("Variable({}, {})", operand.name, operand.offset);
 		default:
 			throw_error(1, "Operand has invalid kind. Hello??");
 			exit(1);
@@ -396,7 +477,7 @@ static std::string operandToStr(Operand operand)
 
 class BinaryInstr : public Instruction {
 	public:
-		Operand dest;
+		Operand dest; // TODO: needs to be an lvalue, not just an operand. could simply be checked in sema?
 		BinaryOp op;
 		Operand left;
 		Operand right;
@@ -432,7 +513,27 @@ class ReturnInstr : public Instruction {
 		}
 };
 
+// find the dest offset from Scope*
+class DeclarationInstr : public Instruction {
+	public:
+		Operand dest;
+		Operand src;
+		std::string destName;
+
+		DeclarationInstr(Operand dest, std::string destName, Operand src) {
+			this->dest = dest;
+			this->destName = destName;
+			this->src = src;
+		}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("Decl {} {} = {}\n", destName, operandToStr(dest), operandToStr(src));
+		}
+};
+
 
 // Three Address Code IR
 std::vector<Instruction*> taco(ProgramNode *program);
+
 

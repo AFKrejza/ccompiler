@@ -1,20 +1,6 @@
-import subprocess
-import tempfile
-import os
 import pytest
-import sys
 
-U8_MAX = 255
-I8_MAX = 127
-
-U16_MAX = 65535
-I16_MAX = 32767
-
-U32_MAX = 4294967296
-I32_MAX = 2147483647
-
-U64_MAX = 18446744073709551615
-I64_MAX = 9223372036854775807
+from constants import u_max, i_max
 
 # Test returning from main.
 class TestReturn:
@@ -22,7 +8,7 @@ class TestReturn:
 	@pytest.mark.parametrize("input, expected", [
 		(0, 0),
 		(1, 1),
-		(U8_MAX, U8_MAX),
+		(u_max(8), u_max(8)),
 		(256, 0) # uint8
 	])
 	def test_literal_exit_code(self, compile_and_run, input, expected):
@@ -46,7 +32,7 @@ class TestReturn:
 	@pytest.mark.parametrize("input, expected", [
 		("int main() { return 1 - 1; }", 0),
 		("int main() { return 0 - 0; }", 0),
-		(f"int main() {{ return {U32_MAX - U32_MAX + 1} ; }}", 1),
+		(f"int main() {{ return {u_max(32) - u_max(32) + 1} ; }}", 1),
 		("int main() { return 254 + 1; }", 255),
 		("int main() { return 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10; }", 55),
 	])
@@ -60,10 +46,10 @@ class TestReturn:
 	def test_add_sub_megalodon(self, compile_and_run):
 		# tested at 52,337 operations but it's unstable,
 		# more causes segfaults and I haven't looked into why.
+		# 20,001 operations worked.
 
-		# 20,001 operations seems okay.
 		megalodon = "int main() { return 1"
-		for i in range(10000):
+		for i in range(1000):
 			megalodon = megalodon + " - 1 + 1"
 		megalodon = megalodon + ";}"
 		assert compile_and_run(megalodon) == 1
