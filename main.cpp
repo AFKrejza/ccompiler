@@ -52,9 +52,9 @@ int main(int argc, char *argv[])
 	printTokens();
 	#endif
 
-	ProgramNode *ast = parser();
+	GodNode *ast = parser();
 
-	ProgramNode *vAst = sema(ast); // validated ast
+	GodNode *vAst = sema(ast); // validated ast
 
 	#ifdef AST
 	vAst->printChildren(1);
@@ -86,8 +86,6 @@ void throw_invalid_identifier(int line)
 {
 	std::string s = "Invalid identifier symbol on line ";
 	s.append(std::to_string(line));
-	//  .append(" column ")
-	//  .append(std::to_string(column));
 	throw_error_line(2, line, s);
 }
 
@@ -96,8 +94,6 @@ void throw_invalid_identifier_start(int line)
 {
 	std::string s = "Invalid identifier start symbol on line ";
 	s.append(std::to_string(line));
-	//  .append(" column ")
-	//  .append(std::to_string(column));
 	throw_error_line(2, line, s);
 }
 

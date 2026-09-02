@@ -7,20 +7,21 @@
 
 static void emit(Instruction* instr);
 static void genDeclaration(DeclarationNode* node, FuncDefNode* func);
-Operand genExpression(Node *node, FuncDefNode* func);
-void genReturn(ReturnNode *node, FuncDefNode* func);
+static Operand genExpression(Node *node, FuncDefNode* func);
+static void genReturn(ReturnNode *node, FuncDefNode* func);
 static int newVreg();
 static std::string operandToStr(Operand operand);
+static void genAssignment(AssignmentNode* node, FuncDefNode* func);
 
 static int current = 0; // temp register
 
 static std::vector<Instruction*> ir;
 
-std::vector<Instruction*> taco(ProgramNode *program)
+std::vector<Instruction*> taco(GodNode *program)
 {
 	fmt::print("taco\n");
 
-	auto* main = dynamic_cast<FuncDefNode*>(program->children[0]);
+	auto* main = dynamic_cast<FuncDefNode*>(program->body[0]);
 	assert(main->name == "main");
 
 	for (Node* node : main->body) {
@@ -29,6 +30,9 @@ std::vector<Instruction*> taco(ProgramNode *program)
 		}
 		else if (auto* decl = dynamic_cast<DeclarationNode*>(node)) {
 			genDeclaration(decl, main);
+		}
+		else if (auto* assign = dynamic_cast<AssignmentNode*>(node)) {
+			genAssignment(assign, main);
 		}
 		else {
 			throw_error_line(1, node->line, fmt::format("Taco no rule for {}\n", node->typeName()));
@@ -43,7 +47,7 @@ static void emit(Instruction* instr)
 	ir.push_back(instr);
 }
 
-Operand genExpression(Node *node, FuncDefNode* func)
+static Operand genExpression(Node *node, FuncDefNode* func)
 {
 	Operand vreg;
 
@@ -52,7 +56,6 @@ Operand genExpression(Node *node, FuncDefNode* func)
 	}
 	else if (auto* binOp = dynamic_cast<BinaryOpNode*>(node)) {
 		vreg = Operand::Temp(newVreg(), func->frameSize -= 4);
-		// vregMap.insert({newVreg(), func->frameSize -= 4});
 		auto* binInstr = new BinaryInstr(vreg,
 										 binOp->op,
 										 genExpression(binOp->left, func),
@@ -70,7 +73,7 @@ Operand genExpression(Node *node, FuncDefNode* func)
 	return vreg;
 }
 
-void genReturn(ReturnNode *node, FuncDefNode* func)
+static void genReturn(ReturnNode *node, FuncDefNode* func)
 {
 	Operand operand = genExpression(node->expression, func);
 	emit(new ReturnInstr(operand));
@@ -114,7 +117,13 @@ std::string binaryOpToStr(BinaryOp op) {
 
 static void genDeclaration(DeclarationNode* node, FuncDefNode* func)
 {
-	Operand dest = Operand::Variable(node->name, func->scope.at(node->name).offset);
+	if (node->assignment == nullptr) return;
+	genAssignment(node->assignment, func);
+}
+
+static void genAssignment(AssignmentNode* node, FuncDefNode* func)
+{
+	Operand dest = Operand::Variable(node->name, func->getSymbol(node->name).offset);
 	Operand src = genExpression(node->expression, func);
-	emit(new DeclarationInstr(dest, node->name, src));
+	emit(new AssignmentInstr(dest, src));
 }

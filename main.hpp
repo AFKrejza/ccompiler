@@ -143,10 +143,10 @@ static void printIndentLines(int indent)
 
 class Node {
 	public:
-		Type *type = nullptr; // TODO: consider creating a statement node without a type
+		Type *type = nullptr;
 		int line;
 
-		Node(int line) : line(line) {} // TODO: use initializer list syntax in other places
+		Node(int line) : line(line) {}
 
 		virtual void print(int indent) {
 			printIndentLines(indent);
@@ -162,18 +162,50 @@ class Node {
 		}
 };
 
-
-class ProgramNode : public Node {
+class StatementNode : public Node {
 	public:
-		std::vector<Node*> children;
+		std::vector<Node*> body;
 		// each locally scoped symbol has a name and Attributes
 		std::unordered_map<std::string, Attrs> scope;
+		StatementNode* parent = nullptr;
 
-		ProgramNode(int line) : Node(line) {}
+		StatementNode(int line) : Node(line) {}
+
+		// used in semantic analysis to verify that the variable exists in scope
+		bool findSymbolScope(std::string name)
+		{
+			if (this->scope.count(name) == 1) return true;
+			else if (this->scope.count(name) == 0 && this->parent == nullptr) {
+				throw_error_line(1, this->line, fmt::format("Variable '{}' is not defined", name));
+			}
+			else if (this->scope.count(name) > 1) {
+				throw_error_line(1, this->line, fmt::format("Compiler error: {} was declared more than once in a given scope!!!"));
+			}
+			else {
+				throw_error_line(1, this->line, fmt::format("idk what to call this one but it's not good"));
+			}
+			return this->parent->findSymbolScope(name);
+		}
+
+		// used in taco, variable guaranteed to exist thanks to sema
+		Attrs getSymbol(std::string name)
+		{
+			if (this->scope.count(name))
+				return this->scope.at(name);
+
+			return this->parent->getSymbol(name);
+		}
+
+};
+
+
+class GodNode : public StatementNode {
+	public:
+		GodNode(int line) : StatementNode(line) {}
 
 		void printChildren(int indent) override {
 			print(indent);
-			for (Node *i : children) {
+			for (Node *i : body) {
 				i->printChildren(indent + 1);
 			}
 		}
@@ -184,7 +216,7 @@ class ProgramNode : public Node {
 		}
 
 		std::string typeName() override {
-			return "ProgramNode";
+			return "GodNode";
 		}
 };
 
@@ -286,7 +318,7 @@ class Parameter {
 };
 
 
-class FuncDefNode : public Node {
+class FuncDefNode : public StatementNode {
 	public:
 		std::string name;
 		Type *returnType;
@@ -294,14 +326,7 @@ class FuncDefNode : public Node {
 		int frameSize = 0;
 		Node* parent;
 
-		// each locally scoped symbol has a name and Attributes
-		std::unordered_map<std::string, Attrs> scope;
-
-		// must contain at least one return for each control path if returnType isn't void.
-		// should only contain statements?
-		std::vector<Node*> body;
-
-		FuncDefNode(int line, Node* parent, std::string name, Type *returnType) : Node(line) {
+		FuncDefNode(int line, Node* parent, std::string name, Type *returnType) : StatementNode(line) {
 			this->name = name;
 			this->parent = parent;
 			this->returnType = returnType;
@@ -362,16 +387,42 @@ class ReturnNode : public Node {
 		}
 };
 
+class AssignmentNode : public Node {
+	public:
+		std::string name;
+
+		Node* expression = nullptr;
+
+		AssignmentNode(int line, std::string name, Node* expression = nullptr) : Node(line) {
+			this->name = name;
+			this->expression = expression;
+		}
+
+		std::string typeName() override {
+			return "AssignmentNode";
+		}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("{} {} \n", typeName(), name);
+		}
+
+		void printChildren(int indent) override {
+			print(indent);
+			expression->printChildren(indent + 1);
+		}
+};
+
 class DeclarationNode : public Node {
 	public:
 		std::string name;
 		Type* type;
-		Node* expression = nullptr;
+		AssignmentNode* assignment = nullptr;
 
-		DeclarationNode(int line, std::string name, Type* type, Node* expression = nullptr) : Node(line) {
+		DeclarationNode(int line, std::string name, Type* type, AssignmentNode* assignment = nullptr) : Node(line) {
 			this->name = name;
 			this->type = type;
-			this->expression = expression;
+			this->assignment = assignment;
 		}
 
 		std::string typeName() override {
@@ -385,33 +436,23 @@ class DeclarationNode : public Node {
 
 		void printChildren(int indent) override {
 			print(indent);
-			expression->printChildren(indent + 1);
+			if (assignment != nullptr)
+				assignment->expression->printChildren(indent + 1);
 		}
-	};
+};
 
 // class VoidNode : public Node {
 // 	public:
 // 		VoidNode() : Node() {}
 // };
 
-// TODO: This would probably make it easier to structure functions
-// class StatementNode : public Node {
-// 	public:
-
-// };
-
-// class IdentifierNode : Node {
-// 	public:
-// 		IdentifierNode()
-// };
-
 void lexer(std::string src);
 
 // AST
-ProgramNode *parser();
+GodNode *parser();
 
 // Semantic Analysis
-ProgramNode *sema(ProgramNode *ast);
+GodNode *sema(GodNode *ast);
 
 class Instruction {
 	public:
@@ -477,7 +518,7 @@ static std::string operandToStr(Operand operand)
 
 class BinaryInstr : public Instruction {
 	public:
-		Operand dest; // TODO: needs to be an lvalue, not just an operand. could simply be checked in sema?
+		Operand dest; // needs to be an lvalue
 		BinaryOp op;
 		Operand left;
 		Operand right;
@@ -513,27 +554,24 @@ class ReturnInstr : public Instruction {
 		}
 };
 
-// find the dest offset from Scope*
-class DeclarationInstr : public Instruction {
+class AssignmentInstr : public Instruction {
 	public:
 		Operand dest;
 		Operand src;
-		std::string destName;
 
-		DeclarationInstr(Operand dest, std::string destName, Operand src) {
+		AssignmentInstr(Operand dest, Operand src) {
 			this->dest = dest;
-			this->destName = destName;
 			this->src = src;
 		}
 
 		void print(int indent) override {
 			printIndentLines(indent);
-			fmt::print("Decl {} {} = {}\n", destName, operandToStr(dest), operandToStr(src));
+			fmt::print("Assign {} = {}\n", operandToStr(dest), operandToStr(src));
 		}
 };
 
 
 // Three Address Code IR
-std::vector<Instruction*> taco(ProgramNode *program);
+std::vector<Instruction*> taco(GodNode *program);
 
 

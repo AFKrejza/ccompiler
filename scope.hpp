@@ -15,11 +15,3 @@ struct Attrs {
 		this->line = line;
 	}
 };
-
-// class Scope {
-// 	public:
-
-		
-
-// 		Scope() {}
-// };

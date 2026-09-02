@@ -1,27 +1,5 @@
 /*
 	recursive descent parser
-
-	expression -> term -> factor naming convention:
-	expression for loose-binding + -
-	term for tighter-binding like * /
-	factor for things that have no operators or parentheses that explicitly group things.
-
-	using EBNF (more or less):
-
-	Terminals: type, IDENTIFIER, INTEGER
-
-	function definition	->	type IDENTIFIER "(" paramList ")" functionBody
-		  paramList	->	[ parameter ("," parameter)* ]
-		      parameter ->	type IDENTIFIER
-		   functionBody ->	(statement)* ret	// only return exists. The trailing mandatory ret will be removed eventually
-				    ret ->	"return" expression
-	
-
-	declaration	->	type IDENTIFIER "=" expression ";"		// not implemented
-				|	type IDENTIFIER ";"						// not implemented
-	expression	->	term (("+"|"-") term)*
-	term 		->	factor (("*") factor)*
-	factor		->	IDENTIFIER | INTEGER | "(" expression ")"	// not implemented (only INTEGER is implemented)
 */
 
 #include "main.hpp"
@@ -34,21 +12,21 @@ static Token retreat(int retreatBy = -1);
 static Token peek(int peekBy = 1);
 static Token token();
 
-// static Node *parseDeclaration();
 static Node *parseExpression();
 static Node *parseTerm();
 static Node *parseFactor();
-static Node *parseFuncDef(ProgramNode* parent);
+static Node *parseFuncDef(GodNode* parent);
 static std::vector<Parameter> parseParamList();
 static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode);
 static Type *parseType();
 static Node* parseDeclaration();
+static AssignmentNode* parseAssignment();
 
-ProgramNode *parser()
+GodNode *parser()
 {
 	fmt::print("parseTokens\n");
 
-	ProgramNode *program = new ProgramNode(0);
+	GodNode *program = new GodNode(0);
 
 	while (token().tokenType != END_OF_FILE)
 	{
@@ -58,7 +36,7 @@ ProgramNode *parser()
 			tokenList[current + 2].tokenType == OPEN_PARENTHESES) {
 
 			node = parseFuncDef(program);
-			program->children.push_back(node);
+			program->body.push_back(node);
 			break;
 		}
 		else {
@@ -95,6 +73,7 @@ static Token token()
 	return tokenList.at(current);
 }
 
+// starts at first token of expression
 static Node *parseExpression()
 {
 	Node *root = parseTerm();
@@ -111,7 +90,6 @@ static Node *parseExpression()
 		}
 		else {
 			break;
-			// throw_error_line(1, token().line, fmt::format("parseExpression: no rule for token {}\n", token().token_type_to_string(token().tokenType)));
 		}
 	}
 	if (token().tokenType == SEMICOLON) advance();
@@ -148,7 +126,6 @@ static Node *parseFactor()
 	}
 	else if (token().tokenType == IDENTIFIER)
 	{
-		token().print();
 		return new VariableNode(token().line, token().lexeme);
 	}
 	else {
@@ -157,7 +134,7 @@ static Node *parseFactor()
 	}
 }
 
-static Node *parseFuncDef(ProgramNode* parent)
+static Node *parseFuncDef(GodNode* parent)
 {
 	Type *returnType = parseType();
 
@@ -212,10 +189,14 @@ static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode)
 			body.push_back(retNode);
 		}
 		else if (token().tokenType == INT &&
-				 peek(1).tokenType == IDENTIFIER &&
-				 peek(2).tokenType == ASSIGNMENT)
+				 peek(1).tokenType == IDENTIFIER)
 		{
 			body.push_back(parseDeclaration());
+		}
+		else if (token().tokenType == IDENTIFIER &&
+				 peek(1).tokenType == ASSIGNMENT)
+		{
+			body.push_back(parseAssignment());
 		}
 		else {
 			throw_error_line(1, token().line, fmt::format("parseFuncBody failure to parse {}", token().token_type_to_string(token().tokenType)));
@@ -251,12 +232,29 @@ static Type *parseType()
 static Node* parseDeclaration()
 {
 	Type* type = parseType();
-
 	auto* node = new DeclarationNode(token().line, token().lexeme, type);
-	
-	advance();
-	assert(token().tokenType == ASSIGNMENT);
-	advance();
+
+	if (peek().tokenType == ASSIGNMENT) {
+		node->assignment = parseAssignment();
+	}
+	else if (peek(1).tokenType == SEMICOLON) {
+		advance(2);
+	}
+	else {
+		throw_error_line(1, token().line, fmt::format("Non-initializing declaration of variable {} was not terminated with a semicolon", token().lexeme));
+	}
+
+	return node;
+}
+
+static AssignmentNode* parseAssignment()
+{
+	assert(peek(1).tokenType == ASSIGNMENT);
+
+	auto* node = new AssignmentNode(token().line, token().lexeme);
+
+	advance(2);
 	node->expression = parseExpression();
+	node->printChildren(1);
 	return node;	
 }

@@ -62,7 +62,7 @@ int main()
 
 	Node *another = function();
 
-	another->sayType(); // i get it now
+	another->sayType();
 
 	// std::vector<int> arr;
 	// arr.

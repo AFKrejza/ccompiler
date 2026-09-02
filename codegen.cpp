@@ -5,15 +5,7 @@
 /*
 	Convert TACO IR to assembly.
 
-	for each function: I need to track:
-	- how much stack is needed,
-	- how large each register must be (i'll just do 32 bit for now)
-
 	Defines a function for translating each instruction to assembly.
-
-	also note that this is truly the last stage. There won't be any
-	more processing after this. All optimizations shall be done
-	in the previous stages.
 */
 
 std::string binaryOpToAsm(BinaryOp op);
@@ -23,7 +15,7 @@ static void emitProgramEnd();
 static void emitProgramStart();
 static void emitReturn(ReturnInstr* instr);
 static void emitBinaryInstr(BinaryInstr* instr);
-static void emitDeclaration(DeclarationInstr* instr);
+static void emitAssignment(AssignmentInstr* instr);
 
 std::ofstream output;
 
@@ -56,8 +48,8 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir)
 		else if (auto* instr = dynamic_cast<BinaryInstr*>(i)) {
 			emitBinaryInstr(instr);
 		}
-		else if (auto* instr = dynamic_cast<DeclarationInstr*>(i)) {
-			emitDeclaration(instr);
+		else if (auto* instr = dynamic_cast<AssignmentInstr*>(i)) {
+			emitAssignment(instr);
 		}
 	}
 	
@@ -71,7 +63,6 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir)
 	return outputFilename;
 }
 
-// pass one instruction at a time to it for readability
 static void emit(std::string instr)
 {
 	output << "    " << instr << "\n";
@@ -166,9 +157,8 @@ std::string binaryOpToAsm(BinaryOp op)
 	}
 }
 
-static void emitDeclaration(DeclarationInstr* instr)
+static void emitAssignment(AssignmentInstr* instr)
 {
-	// depends on what's in dest!!!
 	switch (instr->src.kind)
 	{
 		case OperandKind::Immediate:
@@ -189,3 +179,4 @@ static void emitDeclaration(DeclarationInstr* instr)
 			throw_error(1, "what the helly");
 	}
 }
+

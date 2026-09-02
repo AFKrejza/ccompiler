@@ -14,20 +14,17 @@ Individual tokens are in ""
 
 Terminals: type, IDENTIFIER, INTEGER
 
-2026-08-20 parser grammar:
+2026-09-02 parser grammar:
 
 <program> = <function>
 <function> = "int" IDENTIFIER "(" <paramList> ")" <functionBody>
 <paramList> = [ <parameter> { "," <parameter> } ]
 <parameter> = "int" IDENTIFIER
-<functionBody> =  { <statement> }
+<functionBody> =  "{" { <statement> } "}"
 <ret> = "return" <expression>
 <expression> = <term> { ("+" | "-") <term> }
 <term> = <factor> { "*" <factor> }
-<factor> = INTEGER | IDENTIFIER
+<factor> = INTEGER | IDENTIFIER TODO: | "(" <expression> ")"
 <statement> = <ret> | <declaration>
-<declaration> = "int" IDENTIFIER "=" <expression>
-
-
-
-
+<declaration> = "int" IDENTIFIER [ "=" <expression> ]
+<assignment> = IDENTIFIER "=" <expression>
