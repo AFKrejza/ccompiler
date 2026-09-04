@@ -16,7 +16,7 @@ def compile_and_run():
 		result = subprocess.run(['./main', path], capture_output=True, text=True)
 		assert result.returncode == 0, f"Compilation failed: {result.stderr}"
 
-		run = subprocess.run(['./out'])
+		run = subprocess.run(['./a.out'])
 		return run.returncode
 
 	yield _run

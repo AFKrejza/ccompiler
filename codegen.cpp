@@ -57,7 +57,7 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir)
 	output.close();
 
 	// assemble & link
-	int resp = system("gcc out.s -o out");
+	int resp = system("gcc out.s");
 	if (resp != 0) throw_error(resp, "Failure in gcc assembling");
 
 	return outputFilename;
@@ -114,34 +114,71 @@ static void emitBinaryInstr(BinaryInstr* instr)
 	{
 		if (instr->right.kind == OperandKind::Immediate)
 		{
-			emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->left.val));
-			emit(fmt::format("{} DWORD PTR [rbp {}], {}", op, instr->dest.offset, instr->right.val));
+			if (instr->op == BinaryOp::ADD || instr->op == BinaryOp::SUB)
+			{
+				emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->left.val));
+				emit(fmt::format("{} DWORD PTR [rbp {}], {}", op, instr->dest.offset, instr->right.val));
+			}
+			else if (instr->op == BinaryOp::MUL)
+			{
+				emit(fmt::format("mov r10d, {}", instr->right.val));
+				emit(fmt::format("imul r10d, {}", instr->left.val));
+				emit(fmt::format("mov [rbp {}], r10d", instr->dest.offset));
+			}
+			else throw_error(1, "emitBinaryInstr fail");
 		}
 		else if (instr->right.kind == OperandKind::Temp ||
-				 instr->right.kind == OperandKind::Variable)
+		     	 instr->right.kind == OperandKind::Variable)
 		{
-			emit(fmt::format("mov r10d, {}", instr->left.val));
-			emit(fmt::format("{} r10d, [rbp {}]", op, instr->right.offset));
-			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
+			if (instr->op == BinaryOp::ADD || instr->op == BinaryOp::SUB) {
+				emit(fmt::format("mov r10d, {}", instr->left.val));
+				emit(fmt::format("{} r10d, [rbp {}]", op, instr->right.offset));
+				emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
+			}
+			else if (instr->op == BinaryOp::MUL) {
+				emit(fmt::format("mov r10d, {}", instr->left.val));
+				emit(fmt::format("imul r10d, [rbp {}]", instr->right.offset));
+				emit(fmt::format("mov [rbp {}], r10d", instr->dest.offset));
+			}
+			else throw_error(1, "emitBinaryInstr fail");			
 		}
+			else throw_error(1, "emitBinaryInstr fail");
 	}
 	else if (instr->left.kind == OperandKind::Temp ||
-			 instr->left.kind == OperandKind::Variable)
+				instr->left.kind == OperandKind::Variable)
 	{
 		if (instr->right.kind == OperandKind::Immediate)
 		{
-			emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
-			emit(fmt::format("{} r10d, {}", op, instr->right.val));
-			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
+			if (instr->op == BinaryOp::ADD || instr->op == BinaryOp::SUB) {
+				emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
+				emit(fmt::format("{} r10d, {}", op, instr->right.val));
+				emit(fmt::format("mov [rbp {}], r10d", instr->dest.offset));
+			}
+			else if (instr->op == BinaryOp::MUL) {
+				emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
+				emit(fmt::format("imul r10d, {}", instr->right.val));
+				emit(fmt::format("mov [rbp {}], r10d", instr->dest.offset));
+			}
+			else throw_error(1, "emitBinaryInstr fail");
 		}
 		else if (instr->right.kind == OperandKind::Temp ||
-				 instr->right.kind == OperandKind::Variable)
+					instr->right.kind == OperandKind::Variable)
 		{
-			emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
-			emit(fmt::format("{} r10d, [rbp {}]", op, instr->right.offset));
-			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
-		}		
+			if (instr->op == BinaryOp::ADD || instr->op == BinaryOp::SUB) {
+				emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
+				emit(fmt::format("{} r10d, [rbp {}]", op, instr->right.offset));
+				emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
+			}
+			else if (instr->op == BinaryOp::MUL) {
+				emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
+				emit(fmt::format("imul r10d, [rbp {}]", instr->right.offset));
+				emit(fmt::format("mov [rbp {}], r10d", instr->dest.offset));
+			}
+			else throw_error(1, "emitBinaryInstr fail");
+		}
+		else throw_error(1, "emitBinaryInstr fail");
 	}
+	else throw_error(1, "emitBinaryInstr fail");
 }
 
 std::string binaryOpToAsm(BinaryOp op)

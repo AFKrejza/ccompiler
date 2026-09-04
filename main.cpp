@@ -26,6 +26,8 @@
 	To check gcc assembly: gcc INPUT.c -S -masm=intel
 	Try with various optimizations e.g. -O2
 
+	2026/04/09: Compiles into out.s, assembles into a.out
+
 	TODO: create a testing setup for each part of the compiler, not just codegen
 */
 

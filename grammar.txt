@@ -22,9 +22,9 @@ Terminals: type, IDENTIFIER, INTEGER
 <parameter> = "int" IDENTIFIER
 <functionBody> =  "{" { <statement> } "}"
 <ret> = "return" <expression>
-<expression> = <term> { ("+" | "-") <term> }
+<expression> = <term> { ("+" | "-" | "*") <term> }
 <term> = <factor> { "*" <factor> }
-<factor> = INTEGER | IDENTIFIER | "(" <expression> ")" // expression parsing is a bit janky
+<factor> = INTEGER | IDENTIFIER | "(" <expression> ")" // expression parsing is a bit janky, this isn't totally accurate
 <statement> = <ret> | <declaration>
 <declaration> = "int" IDENTIFIER [ "=" <expression> ]
 <assignment> = IDENTIFIER "=" <expression>

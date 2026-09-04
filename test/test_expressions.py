@@ -89,6 +89,17 @@ class TestExpressions:
 			return 1 + 2)));
 		}
 		""")),
+	])
+	def test_vars_compiler_errors(self, compile_fail, input):
+		assert compile_fail(input) != 0
+
+	@pytest.mark.parametrize("input, expected", [
+		(textwrap.dedent("""
+		int main()
+		{
+			return 2 * 2;
+		}
+		"""), 4),
 		(textwrap.dedent("""
 		int main()
 		{
@@ -96,8 +107,13 @@ class TestExpressions:
 			int b = 2;
 			return a * (b * b);
 		}
-		""")),
-
+		"""), 4),
+		(textwrap.dedent("""
+		int main()
+		{
+			return 2 * (5 * 5);
+		}
+		"""), 50),
 	])
-	def test_vars_compiler_errors(self, compile_fail, input):
-		assert compile_fail(input) != 0
+	def test_mul(self, compile_and_run, input, expected):
+		assert compile_and_run(input) == expected

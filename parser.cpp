@@ -84,7 +84,7 @@ static Node *parseExpression()
 		   token().tokenType != SEMICOLON &&
 		   token().tokenType != CLOSED_CURLY_BRACE)
 	{
-		if (token().tokenType == PLUS || token().tokenType == MINUS)
+		if (token().tokenType == PLUS || token().tokenType == MINUS || token().tokenType == ASTERISK)
 		{
 			BinaryOpNode *newRoot = new BinaryOpNode(token().line, token().tokenType);
 			newRoot->left = root;
