@@ -69,30 +69,61 @@ static Token peek(int peekBy)
 }
 
 static Token token()
-{
+{ 
 	return tokenList.at(current);
 }
 
-// starts at first token of expression
+// starts at first token of expression, ends after semicolon
 static Node *parseExpression()
 {
-	Node *root = parseTerm();
+	static int nested; // i.e. expr(expr)
 
-	while (token().tokenType != END_OF_FILE && token().tokenType != SEMICOLON)
+	Node *root;
+
+	while (token().tokenType != END_OF_FILE &&
+		   token().tokenType != SEMICOLON &&
+		   token().tokenType != CLOSED_CURLY_BRACE)
 	{
 		if (token().tokenType == PLUS || token().tokenType == MINUS)
 		{
 			BinaryOpNode *newRoot = new BinaryOpNode(token().line, token().tokenType);
-			advance();			
 			newRoot->left = root;
-			newRoot->right = parseTerm();
+			advance();
+			if (token().tokenType == OPEN_PARENTHESES) {
+				advance();
+				nested++;
+				newRoot->right = parseExpression();
+			}
+			else {
+				newRoot->right = parseTerm();
+			}
 			root = newRoot;
 		}
+		else if (token().tokenType == OPEN_PARENTHESES) {
+			nested++;
+			advance();
+			if (nested > 1)
+				root = parseExpression();
+		}
+		else if (token().tokenType == CLOSED_PARENTHESES) {
+			nested--;
+			advance();
+		}
 		else {
-			break;
+			root = parseTerm();
 		}
 	}
-	if (token().tokenType == SEMICOLON) advance();
+	// fmt::print("nested: {}\n", nested);
+	if (token().tokenType == SEMICOLON) 
+	{
+		advance();
+		if (nested != 0)
+		{
+			std::string type = nested > 0 ? "closing" : "opening";
+			int count = nested < 0 ? nested * -1 : nested;
+			throw_error_line(1, token().line, fmt::format("Missing {} {} parentheses", count, type));
+		}
+	}
 
 	return root;
 }
@@ -129,7 +160,7 @@ static Node *parseFactor()
 		return new VariableNode(token().line, token().lexeme);
 	}
 	else {
-		throw_error_line(1, token().line, "Invalid factor. idk if this error should exist");
+		throw_error_line(1, token().line, fmt::format("Invalid factor: '{}', type '{}'", token().lexeme, token().token_type_to_string(token().tokenType)));
 		return NULL;
 	}
 }

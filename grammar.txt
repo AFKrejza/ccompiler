@@ -14,7 +14,7 @@ Individual tokens are in ""
 
 Terminals: type, IDENTIFIER, INTEGER
 
-2026-09-02 parser grammar:
+2026-09-04 parser grammar:
 
 <program> = <function>
 <function> = "int" IDENTIFIER "(" <paramList> ")" <functionBody>
@@ -24,7 +24,7 @@ Terminals: type, IDENTIFIER, INTEGER
 <ret> = "return" <expression>
 <expression> = <term> { ("+" | "-") <term> }
 <term> = <factor> { "*" <factor> }
-<factor> = INTEGER | IDENTIFIER TODO: | "(" <expression> ")"
+<factor> = INTEGER | IDENTIFIER | "(" <expression> ")" // expression parsing is a bit janky
 <statement> = <ret> | <declaration>
 <declaration> = "int" IDENTIFIER [ "=" <expression> ]
 <assignment> = IDENTIFIER "=" <expression>

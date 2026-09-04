@@ -117,14 +117,16 @@ static void emitBinaryInstr(BinaryInstr* instr)
 			emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->left.val));
 			emit(fmt::format("{} DWORD PTR [rbp {}], {}", op, instr->dest.offset, instr->right.val));
 		}
-		else if (instr->right.kind == OperandKind::Temp || instr->right.kind == OperandKind::Variable)
+		else if (instr->right.kind == OperandKind::Temp ||
+				 instr->right.kind == OperandKind::Variable)
 		{
 			emit(fmt::format("mov r10d, {}", instr->left.val));
 			emit(fmt::format("{} r10d, [rbp {}]", op, instr->right.offset));
 			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
 		}
 	}
-	else if (instr->left.kind == OperandKind::Temp || instr->left.kind == OperandKind::Variable)
+	else if (instr->left.kind == OperandKind::Temp ||
+			 instr->left.kind == OperandKind::Variable)
 	{
 		if (instr->right.kind == OperandKind::Immediate)
 		{
@@ -132,7 +134,8 @@ static void emitBinaryInstr(BinaryInstr* instr)
 			emit(fmt::format("{} r10d, {}", op, instr->right.val));
 			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
 		}
-		else if (instr->right.kind == OperandKind::Temp || instr->right.kind == OperandKind::Variable)
+		else if (instr->right.kind == OperandKind::Temp ||
+				 instr->right.kind == OperandKind::Variable)
 		{
 			emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
 			emit(fmt::format("{} r10d, [rbp {}]", op, instr->right.offset));
