@@ -19,8 +19,6 @@ static std::vector<Instruction*> ir;
 
 std::vector<Instruction*> taco(GodNode *program)
 {
-	fmt::print("taco\n");
-
 	auto* main = dynamic_cast<FuncDefNode*>(program->body[0]);
 	assert(main->name == "main");
 
@@ -35,10 +33,13 @@ std::vector<Instruction*> taco(GodNode *program)
 			genAssignment(assign, main);
 		}
 		else {
-			throw_error_line(1, node->line, fmt::format("Taco no rule for {}\n", node->typeName()));
+			throw_error_line(1, 
+							 node->line, 
+							 fmt::format("Taco no rule for {}\n", node->typeName()));
 		}
 	}
 
+	fmt::print("IR generated\n");
 	return ir;
 }
 
@@ -68,7 +69,9 @@ static Operand genExpression(Node *node, FuncDefNode* func)
 		return Operand::Variable(var->name, func->scope.at(var->name).offset);
 	}
 	else {
-		throw_error_line(1, node->line, fmt::format("genExpression: no rule for {}", node->typeName()));
+		throw_error_line(1, 
+						 node->line, 
+						 fmt::format("genExpression: no rule for {}", node->typeName()));
 	}
 	return vreg;
 }
@@ -110,7 +113,8 @@ std::string binaryOpToStr(BinaryOp op) {
 		case BinaryOp::DIV:
 			return std::string{"/"};
 		default:
-			throw_error(1, "Error in BinaryInstr->toStr: Invalid operator"); // TODO: use a C++ feature to do this automatically.
+			// TODO: use a C++ feature to do this automatically.
+			throw_error(1, "Error in BinaryInstr->toStr: Invalid operator");
 			exit(1);
 	}
 }

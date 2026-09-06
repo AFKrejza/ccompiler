@@ -16,7 +16,10 @@ static void populateKeywords(std::unordered_map<TokenType, std::string> printmap
 static bool parseInteger(std::string lexeme);
 static int ctoi(char c);
 
-static void addToken(TokenType type, int length, std::string lexeme, Literal literal = std::monostate{});
+static void addToken(TokenType type, 
+					 int length, 
+					 std::string lexeme, 
+					 Literal literal = std::monostate{});
 
 // contains all symbols and keywords
 std::unordered_map<TokenType, std::string> populatePrintmap();
@@ -46,7 +49,7 @@ void lexer(std::string src)
 	addToken(TokenType::END_OF_FILE, 1, "");
 
 	int len = tokenList.size();
-	fmt::print("tokenList size: {}\n", len);
+	fmt::print("Tokenizer done. tokenList size: {}\n", len);
 }
 
 
@@ -209,7 +212,9 @@ static void parse_string()
 	}
 	if (isAtEnd())
 	{
-		throw_warn(4, line, std::string{"Unterminated string on line "}.append(std::to_string(line)));
+		throw_warn(4, 
+				   line, 
+				   std::string{"Unterminated string on line "}.append(std::to_string(line)));
 	}
 }
 

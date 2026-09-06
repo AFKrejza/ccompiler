@@ -19,10 +19,8 @@ static void emitAssignment(AssignmentInstr* instr);
 
 std::ofstream output;
 
-std::string codegen(std::string fileName, std::vector<Instruction*> ir)
+std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode* ast)
 {
-	fmt::print("codegen\n");
-
 	// TODO: have it use the user-defined output name
 	(void) fileName;
 	if (std::filesystem::exists("out.s"))
@@ -38,7 +36,9 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir)
 	// kinda just hardcode main. Check sema.cpp
 	emitni(fmt::format("main: "));
 	emit("push rbp");
-	emit("mov rbp, rsp\n");
+	emit("mov rbp, rsp");
+	emit(fmt::format("sub rsp, {}", -1 * static_cast<FuncDefNode*>(ast->body[0])->frameSize));
+	emit("");
 
 	for (Instruction* i : ir)
 	{
@@ -56,10 +56,12 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir)
 	emitProgramEnd();
 	output.close();
 
+	fmt::print("Assembly generated in {}\n", outputFilename);
+
 	// assemble & link
 	int resp = system("gcc out.s");
 	if (resp != 0) throw_error(resp, "Failure in gcc assembling");
-
+	
 	return outputFilename;
 }
 
@@ -116,8 +118,13 @@ static void emitBinaryInstr(BinaryInstr* instr)
 		{
 			if (instr->op == BinaryOp::ADD || instr->op == BinaryOp::SUB)
 			{
-				emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->left.val));
-				emit(fmt::format("{} DWORD PTR [rbp {}], {}", op, instr->dest.offset, instr->right.val));
+				emit(fmt::format("mov DWORD PTR [rbp {}], {}",
+					 instr->dest.offset,
+					 instr->left.val));
+				emit(fmt::format("{} DWORD PTR [rbp {}], {}",
+					 op, 
+					 instr->dest.offset, 
+					 instr->right.val));
 			}
 			else if (instr->op == BinaryOp::MUL)
 			{
@@ -202,7 +209,7 @@ static void emitAssignment(AssignmentInstr* instr)
 	switch (instr->src.kind)
 	{
 		case OperandKind::Immediate:
-			emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->src.val));
+			emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->src.val));   
 			break;
 
 		case OperandKind::Temp:

@@ -8,7 +8,7 @@
 #include "main.hpp"
 
 /*
-	g++ main.cpp parser.cpp lexer.cpp sema.cpp taco.cpp codegen.cpp -o main -lfmt && ./main source.c
+g++ main.cpp parser.cpp lexer.cpp sema.cpp taco.cpp codegen.cpp -o main -lfmt && ./main source.c
 	
 	-DLEX to print token list
 	-DAST to print validated AST
@@ -33,6 +33,11 @@
 
 
 static std::string preprocess(std::string fileName);
+void lexer(std::string src);
+GodNode *parser();
+GodNode *sema(GodNode *ast);
+std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode* ast);
+
 
 int main(int argc, char *argv[])
 {
@@ -70,7 +75,7 @@ int main(int argc, char *argv[])
 	}
 	#endif
 
-	std::string outputFilename = codegen(fileName, ir);
+	std::string outputFilename = codegen(fileName, ir, vAst);
 
 	#ifdef ASM
 	std::string result = readFile(outputFilename);
@@ -83,7 +88,8 @@ int main(int argc, char *argv[])
 }
 
 
-// TODO: find a way to print where the error was thrown in this file (a C++ exception or something?)
+// TODO: find a way to print where the error was thrown in this file
+// (a C++ exception or something?)
 void throw_invalid_identifier(int line)
 {
 	std::string s = "Invalid identifier symbol on line ";

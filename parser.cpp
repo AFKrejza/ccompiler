@@ -24,8 +24,6 @@ static AssignmentNode* parseAssignment();
 
 GodNode *parser()
 {
-	fmt::print("parseTokens\n");
-
 	GodNode *program = new GodNode(0);
 
 	while (token().tokenType != END_OF_FILE)
@@ -40,7 +38,10 @@ GodNode *parser()
 			break;
 		}
 		else {
-			throw_error_line(1, token().line, fmt::format("Parser failure: no rule for token {}", token().token_type_to_string(token().tokenType)));
+			throw_error_line(1, 
+							 token().line, 
+							 fmt::format("Parser failure: no rule for token {}",
+								token().token_type_to_string(token().tokenType)));
 		}
 	}
 
@@ -84,7 +85,9 @@ static Node *parseExpression()
 		   token().tokenType != SEMICOLON &&
 		   token().tokenType != CLOSED_CURLY_BRACE)
 	{
-		if (token().tokenType == PLUS || token().tokenType == MINUS || token().tokenType == ASTERISK)
+		if (token().tokenType == PLUS || 
+			token().tokenType == MINUS || 
+			token().tokenType == ASTERISK)
 		{
 			BinaryOpNode *newRoot = new BinaryOpNode(token().line, token().tokenType);
 			newRoot->left = root;
@@ -121,7 +124,9 @@ static Node *parseExpression()
 		{
 			std::string type = nested > 0 ? "closing" : "opening";
 			int count = nested < 0 ? nested * -1 : nested;
-			throw_error_line(1, token().line, fmt::format("Missing {} {} parentheses", count, type));
+			throw_error_line(1, 
+							 token().line, 
+							 fmt::format("Missing {} {} parentheses", count, type));
 		}
 	}
 
@@ -160,7 +165,11 @@ static Node *parseFactor()
 		return new VariableNode(token().line, token().lexeme);
 	}
 	else {
-		throw_error_line(1, token().line, fmt::format("Invalid factor: '{}', type '{}'", token().lexeme, token().token_type_to_string(token().tokenType)));
+		throw_error_line(1, 
+						 token().line, 
+						 fmt::format("Invalid factor: '{}', type '{}'", 
+							token().lexeme, 
+							token().token_type_to_string(token().tokenType)));
 		return NULL;
 	}
 }
@@ -230,7 +239,10 @@ static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode)
 			body.push_back(parseAssignment());
 		}
 		else {
-			throw_error_line(1, token().line, fmt::format("parseFuncBody failure to parse {}", token().token_type_to_string(token().tokenType)));
+			throw_error_line(1, 
+							 token().line, 
+							 fmt::format("parseFuncBody failure to parse {}", 
+								token().token_type_to_string(token().tokenType)));
 		}
 	}
 	return body;
@@ -247,7 +259,9 @@ static Type *parseType()
 			break;
 		
 		default:
-			throw_error_line(1, tokenList.at(current).line, "parseType failure: Invalid or missing type");
+			throw_error_line(1, 
+							 tokenList.at(current).line, 
+							 "parseType failure: Invalid or missing type");
 			return nullptr;
 	}
 
@@ -272,7 +286,10 @@ static Node* parseDeclaration()
 		advance(2);
 	}
 	else {
-		throw_error_line(1, token().line, fmt::format("Non-initializing declaration of variable {} was not terminated with a semicolon", token().lexeme));
+		throw_error_line(1, 
+						 token().line, 
+						 fmt::format("Non-initializing declaration of variable {} was "
+									 "not terminated with a semicolon", token().lexeme));
 	}
 
 	return node;
@@ -286,6 +303,5 @@ static AssignmentNode* parseAssignment()
 
 	advance(2);
 	node->expression = parseExpression();
-	node->printChildren(1);
 	return node;	
 }

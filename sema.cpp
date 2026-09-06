@@ -22,8 +22,6 @@ static void evalAssignment(AssignmentNode* node, FuncDefNode* func);
 
 GodNode *sema(GodNode *program)
 {
-	fmt::print("sema\n");
-
 	FuncDefNode *main = dynamic_cast<FuncDefNode*>(program->body[0]);
 	if (main == nullptr ||
 		main->typeName() != "FuncDefNode" ||
@@ -57,11 +55,12 @@ GodNode *sema(GodNode *program)
 		}
 	}
 	
-	fmt::print("AST validation complete\n");
+	fmt::print("Semantic analysis completed\n");
 	return program;
 }
 
-// takes 2 Types and walks through them in lockstep. Types are linked lists of size 1 or greater.
+// takes 2 Types and walks through them in lockstep. 
+// Types are linked lists of size 1 or greater.
 bool typesEqual(Type *first, Type *second)
 {
 	// TODO: look into how C manages differently sized integers.
@@ -112,7 +111,9 @@ static Type* evalType(Node *node, FuncDefNode* func)
 	else if (auto* var = dynamic_cast<VariableNode*>(node))
 	{
 		if (!func->findSymbolScope(var->name)) {
-			throw_error_line(1, var->line, fmt::format("Use of uninitialized variable {}", var->name));
+			throw_error_line(1, 
+							 var->line, 
+							 fmt::format("Use of uninitialized variable {}", var->name));
 		}
 
 		Attrs attrs = func->scope.at(var->name);
@@ -138,7 +139,11 @@ static void evalDeclaration(DeclarationNode* node, FuncDefNode* func)
 	if (func->scope.count(node->name))
 	{
 		Attrs attrs = func->getSymbol(node->name);
-		throw_error_line(1, node->line, fmt::format("'{}' was redeclared. First declared on line {}", node->name, attrs.line));
+		throw_error_line(1, 
+						 node->line, 
+						 fmt::format("'{}' was redeclared. First declared on line {}", 
+									 node->name, 
+									 attrs.line));
 	}
 
 	func->frameSize -= node->type->size;

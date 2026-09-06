@@ -82,7 +82,13 @@ class Token {
 		int column; // TODO: broken
 		int length; // TODO: broken
 
-		Token(TokenType tokenType, int length, std::string lexeme, Literal literal, int line, int column) {
+		Token(TokenType tokenType,
+			  int length,
+			  std::string lexeme,
+			  Literal literal,
+			  int line,
+			  int column)
+		{
 			this->tokenType = tokenType;
 			this->lexeme = lexeme;
 			this->literal = literal;
@@ -176,13 +182,20 @@ class StatementNode : public Node {
 		{
 			if (this->scope.count(name) == 1) return true;
 			else if (this->scope.count(name) == 0 && this->parent == nullptr) {
-				throw_error_line(1, this->line, fmt::format("Variable '{}' is not defined", name));
+				throw_error_line(1,
+								 this->line,
+								 fmt::format("Variable '{}' is not defined", name));
 			}
 			else if (this->scope.count(name) > 1) {
-				throw_error_line(1, this->line, fmt::format("Compiler error: {} was declared more than once in a given scope!!!"));
+				throw_error_line(1,
+								 this->line,
+								 fmt::format("Compiler error: {} was declared more "
+											 "than once in a given scope!!!"));
 			}
 			else {
-				throw_error_line(1, this->line, fmt::format("idk what to call this one but it's not good"));
+				throw_error_line(1,
+								 this->line,
+								 fmt::format("idk what to call this one but it's not good"));
 			}
 			return this->parent->findSymbolScope(name);
 		}
@@ -326,7 +339,10 @@ class FuncDefNode : public StatementNode {
 		int frameSize = 0;
 		Node* parent;
 
-		FuncDefNode(int line, Node* parent, std::string name, Type *returnType) : StatementNode(line) {
+		FuncDefNode(int line,
+					Node* parent,
+					std::string name,
+					Type *returnType) : StatementNode(line) {
 			this->name = name;
 			this->parent = parent;
 			this->returnType = returnType;
@@ -419,7 +435,11 @@ class DeclarationNode : public Node {
 		Type* type;
 		AssignmentNode* assignment = nullptr;
 
-		DeclarationNode(int line, std::string name, Type* type, AssignmentNode* assignment = nullptr) : Node(line) {
+		DeclarationNode(int line,
+						std::string name,
+						Type* type,
+						AssignmentNode* assignment = nullptr) : Node(line)
+		{
 			this->name = name;
 			this->type = type;
 			this->assignment = assignment;
@@ -446,22 +466,12 @@ class DeclarationNode : public Node {
 // 		VoidNode() : Node() {}
 // };
 
-void lexer(std::string src);
-
-// AST
-GodNode *parser();
-
-// Semantic Analysis
-GodNode *sema(GodNode *ast);
-
 class Instruction {
 	public:
 		virtual ~Instruction() = default;
 
 		virtual void print(int indent) {}
 };
-
-std::string codegen(std::string fileName, std::vector<Instruction*> ir);
 
 enum class OperandKind {
 	Temp,
