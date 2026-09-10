@@ -14,7 +14,7 @@ Individual tokens are in ""
 
 Terminals: type, IDENTIFIER, INTEGER
 
-2026-09-04 parser grammar:
+2026-09-10 parser grammar:
 
 <program> = <function>
 <function> = "int" IDENTIFIER "(" <paramList> ")" <functionBody>
@@ -22,9 +22,16 @@ Terminals: type, IDENTIFIER, INTEGER
 <parameter> = "int" IDENTIFIER
 <functionBody> =  "{" { <statement> } "}"
 <ret> = "return" <expression>
-<expression> = <term> { ("+" | "-" | "*") <term> }
+<expression> = <term> { <binop> <term> }
+<binop> = "+" | "-" | "*" | "&&" | "||" | "==" | "!=" | "<" | "<=" | ">" | ">=" // TODO: && and || don't support nesting
 <term> = <factor> { "*" <factor> }
 <factor> = INTEGER | IDENTIFIER | "(" <expression> ")" // expression parsing is a bit janky, this isn't totally accurate
 <statement> = <ret> | <declaration>
 <declaration> = "int" IDENTIFIER [ "=" <expression> ]
 <assignment> = IDENTIFIER "=" <expression>
+
+TODO: Add the AST definition. Add a definition to every stage of the compiler.
+I already occasionally forget that I implemented something. Sandler p.73 pdf 113
+
+p.75 pdf 115 contains more information on how to define the IR.
+

@@ -84,10 +84,19 @@ static Node *parseExpression()
 	while (token().tokenType != END_OF_FILE &&
 		   token().tokenType != SEMICOLON &&
 		   token().tokenType != CLOSED_CURLY_BRACE)
-	{
+	{ // if it's a binary operator
 		if (token().tokenType == PLUS || 
 			token().tokenType == MINUS || 
-			token().tokenType == ASTERISK)
+			token().tokenType == ASTERISK ||
+			token().tokenType == LOGICAL_AND ||
+			token().tokenType == LOGICAL_OR ||
+			token().tokenType == EQUAL_TO ||
+			token().tokenType == NOT_EQUAL ||
+			token().tokenType == LESS_THAN || 
+			token().tokenType == LESSER_OR_EQUAL ||
+			token().tokenType == GREATER_THAN ||
+			token().tokenType == GREATER_OR_EQUAL
+		)
 		{
 			BinaryOpNode *newRoot = new BinaryOpNode(token().line, token().tokenType);
 			newRoot->left = root;

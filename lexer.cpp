@@ -103,12 +103,15 @@ static void scanToken()
 		case '=':
 			if (peek() == '>') {
 				addToken(TokenType::GREATER_OR_EQUAL, 2, "=>");
+				advance();
 			}
 			else if (peek() == '<') {
 				addToken(TokenType::LESSER_OR_EQUAL, 2, "=<");
+				advance();
 			}
 			else if (peek() == '=') {
 				addToken(TokenType::EQUAL_TO, 2, "==");
+				advance();
 			}
 			else {
 				addToken(TokenType::ASSIGNMENT, 1, "=");
@@ -117,6 +120,7 @@ static void scanToken()
 		case '>':
 			if (peek() == '=') {
 				addToken(TokenType::GREATER_OR_EQUAL, 2, ">=");
+				advance();
 			}
 			else {
 				addToken(TokenType::GREATER_THAN, 1, ">");
@@ -125,6 +129,7 @@ static void scanToken()
 		case '<':
 			if (peek() == '=') {
 				addToken(TokenType::LESSER_OR_EQUAL, 2, "<=");
+				advance();
 			}
 			else {
 				addToken(TokenType::LESS_THAN, 1, "<");
@@ -133,6 +138,7 @@ static void scanToken()
 		case '!':
 			if (peek() == '=') {
 				addToken(TokenType::NOT_EQUAL, 2, "!=");
+				advance();
 			}
 			else {
 				addToken(TokenType::LOGICAL_NOT, 1, "!");
@@ -141,9 +147,19 @@ static void scanToken()
 		case '&':
 			if (peek() == '&') {
 				addToken(TokenType::LOGICAL_AND, 2, "&&");
+				advance();
 			}
 			else {
 				addToken(TokenType::BITWISE_AND, 1, "&"); // won't work with pointers
+			}
+			break;
+		case '|':
+			if (peek() == '|') {
+				addToken(TokenType::LOGICAL_OR, 2, "||");
+				advance();
+			}
+			else {
+				addToken(TokenType::BITWISE_OR, 1, "|");
 			}
 			break;
 		case '"':

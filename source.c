@@ -1,4 +1,6 @@
 int main()
 {
-	return 2 * (2 * 2);
+	int a = 1;
+	int b = 1;
+	return a && b;
 }

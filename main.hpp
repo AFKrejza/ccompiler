@@ -9,7 +9,6 @@
 
 #include <fmt/core.h>
 
-// #include "type.hpp"
 #include "scope.hpp"
 
 void throw_error(int code, std::string msg);
@@ -17,6 +16,7 @@ void throw_error_line(int code, int line, std::string msg);
 void throw_warn(int code, int line, std::string msg);
 void throw_invalid_identifier(int line);
 void throw_invalid_identifier_start(int line);
+
 std::string readFile(std::string filename);
 void printTokens();
 
@@ -27,13 +27,6 @@ using Literal = std::variant<
 	std::string,
 	bool
 >;
-
-enum class BinaryOp {
-	ADD,
-	SUB,
-	MUL,
-	DIV
-};
 
 struct LiteralPrintVisitor {
 	std::string operator()(std::monostate v) const {
@@ -51,6 +44,23 @@ struct LiteralPrintVisitor {
 	}
 };
 
+
+enum class BinaryOp {
+	ADD,
+	SUB,
+	MUL,
+	DIV,
+	LOGICAL_AND,
+	LOGICAL_OR,
+	EQUAL_TO,
+	NOT_EQUAL,
+	LESS_THAN,
+	LESSER_OR_EQUAL,
+	GREATER_THAN,
+	GREATER_OR_EQUAL
+};
+
+void printIndentLines(int indent);
 
 enum TokenType {
 	SEMICOLON, PLUS, MINUS, ASSIGNMENT, OPEN_PARENTHESES, CLOSED_PARENTHESES,
@@ -132,19 +142,6 @@ class Token {
 		}
 };
 
-
-static void printIndentLines(int indent)
-{
-	std::string indentation{};
-	std::string bar = "|";
-	for (int i = 0; i < indent - 1; i++) {
-		indentation.append(bar)
-					.append("   ");
-	}
-	indentation.append(bar)
-				.append("--");
-	std::cout << indentation;
-}
 
 
 class Node {
@@ -461,6 +458,14 @@ class DeclarationNode : public Node {
 		}
 };
 
+
+class IfNode : public StatementNode {
+	Node* expression;
+
+	// compound statement here?
+	// or just an array of StatementNodes?
+};
+
 // class VoidNode : public Node {
 // 	public:
 // 		VoidNode() : Node() {}
@@ -471,6 +476,10 @@ class Instruction {
 		virtual ~Instruction() = default;
 
 		virtual void print(int indent) {}
+
+		virtual std::string typeName() {
+			return "Instruction";
+		}
 };
 
 enum class OperandKind {
@@ -547,6 +556,10 @@ class BinaryInstr : public Instruction {
 													  binaryOpToStr(op),
 													  operandToStr(right));
 		}
+		
+		std::string typeName() override {
+			return "BinaryInstr";
+		}
 };
 
 
@@ -561,6 +574,10 @@ class ReturnInstr : public Instruction {
 		void print(int indent) override {
 			printIndentLines(indent);
 			fmt::print("Return {}\n", operandToStr(operand));
+		}
+
+		std::string typeName() override {
+			return "ReturnInstr";
 		}
 };
 
@@ -578,10 +595,112 @@ class AssignmentInstr : public Instruction {
 			printIndentLines(indent);
 			fmt::print("Assign {} = {}\n", operandToStr(dest), operandToStr(src));
 		}
+
+		std::string typeName() override {
+			return "AssignmentInstr";
+		}
 };
 
+class Label : public Instruction {
+	public:
+		std::string name;
 
-// Three Address Code IR
-std::vector<Instruction*> taco(GodNode *program);
+		Label(std::string name) {
+			this->name = name;
+		}
 
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("Label {}\n", name);
+		}
+
+		std::string typeName() override {
+			return "Label";
+		}
+};
+
+// enum class JumpCond {
+// 	EQUAL,
+// 	ZERO,
+// 	NONZERO,
+// };
+
+// i could do the codegen similarly to emitBinaryInstr
+
+class JumpInstr : public Instruction {
+	public:
+		Label* label;
+
+		JumpInstr(Label* label) : label(label) {}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("JumpInstr {}\n", label->name);
+		}
+		
+		std::string typeName() override {
+			return "JumpInstr";
+		}
+};
+
+class JumpIfTrueInstr : public JumpInstr {
+	public:
+		Operand operand;
+
+		JumpIfTrueInstr(Label* label, Operand operand)
+		:	JumpInstr(label),
+			operand(operand) {}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("JumpIfTrue {} {}\n", operand.name, label->name);
+		}
+
+		std::string typeName() override {
+			return "JumpIfTrueInstr";
+		}
+};
+
+class JumpIfFalseInstr : public JumpInstr {
+	public:
+		Operand operand;
+
+		JumpIfFalseInstr(Label* label, Operand operand)
+		:	JumpInstr(label),
+			operand(operand) {}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("JumpIfFalse {} {}\n", operand.name, label->name);
+		}
+
+		std::string typeName() override {
+			return "JumpIfFalseInstr";
+		}
+};
+
+class JumpIfInstr : public JumpInstr {
+	public:
+		BinaryOp condition; // SORT of a BinaryOp. But semantically different here.
+		// should probably translate it to some other enum. Idk bro.
+		Operand operand;
+		Operand comparand;
+
+		JumpIfInstr(BinaryOp condition, Operand operand, Operand comparand, Label* label)
+		:	JumpInstr(label),
+			condition(condition),
+			operand(operand),
+			comparand(comparand) {}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("JumpIf TODO: print comparand operand and condition {} {}\n",
+				       operand.name,
+					   label->name);
+		}
+
+		std::string typeName() override {
+			return "JumpIfInstr";
+		}
+};
 

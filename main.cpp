@@ -36,6 +36,7 @@ static std::string preprocess(std::string fileName);
 void lexer(std::string src);
 GodNode *parser();
 GodNode *sema(GodNode *ast);
+std::vector<Instruction*> taco(GodNode *program);
 std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode* ast);
 
 
@@ -65,6 +66,7 @@ int main(int argc, char *argv[])
 
 	#ifdef AST
 	vAst->printChildren(1);
+	fmt::print("\n");
 	#endif
 
 	std::vector<Instruction*> ir = taco(vAst);
@@ -198,4 +200,17 @@ static std::string preprocess(std::string fileName)
 	system(script.c_str());
 
 	return source;
+}
+
+void printIndentLines(int indent)
+{
+	std::string indentation{};
+	std::string bar = "|";
+	for (int i = 0; i < indent - 1; i++) {
+		indentation.append(bar)
+					.append("   ");
+	}
+	indentation.append(bar)
+				.append("--");
+	fmt::print(indentation);
 }

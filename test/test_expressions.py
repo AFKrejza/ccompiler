@@ -117,3 +117,187 @@ class TestExpressions:
 	])
 	def test_mul(self, compile_and_run, input, expected):
 		assert compile_and_run(input) == expected
+
+	# TODO: This should be parametrized (ironically), separate for returning 1 or 0
+	@pytest.mark.parametrize("input, expected", [
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			a = a == a;
+			return a;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			return a == 0;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 0;
+			return a || b;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 0;
+			return b || a;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 1;
+			return a || b;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 0;
+			int b = 0;
+			return a || b;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 0;
+			int b = 0;
+			return a && b;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 1;
+			return a && b;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 0;
+			return a && b;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 0;
+			int b = 1;
+			return a && b;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 0;
+			int b = 0;
+			return a != b;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 0;
+			return a != b;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 0;
+			return a < b;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 0;
+			int b = 1;
+			return a < b;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 0;
+			return a <= b;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 1;
+			return a <= b;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 2;
+			return a <= b;
+		}
+		"""), 1),
+
+
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 0;
+			int b = 1;
+			return a > b;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 0;
+			return a > b;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 0;
+			int b = 1;
+			return a >= b;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 1;
+			int b = 1;
+			return a >= b;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 2;
+			int b = 1;
+			return a >= b;
+		}
+		"""), 1),
+	])
+	def test_binary_operators(self, compile_and_run, input, expected):
+		#	==	||	&&	 !=	 <	 <=	 >	 >=
+		assert compile_and_run(input) == expected

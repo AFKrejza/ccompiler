@@ -8,7 +8,7 @@
 	Defines a function for translating each instruction to assembly.
 */
 
-std::string binaryOpToAsm(BinaryOp op);
+static std::string binaryOpToAsm(BinaryOp op);
 static void emit(std::string code);
 static void emitni(std::string code); // no indent
 static void emitProgramEnd();
@@ -16,6 +16,11 @@ static void emitProgramStart();
 static void emitReturn(ReturnInstr* instr);
 static void emitBinaryInstr(BinaryInstr* instr);
 static void emitAssignment(AssignmentInstr* instr);
+static std::string operandText(const Operand& operand);
+static void emitJumpIfTrueInstr(JumpIfTrueInstr* instr);
+static void emitJumpIfFalseInstr(JumpIfFalseInstr* instr);
+static void emitLabel(Label* instr);
+static void emitJump(JumpInstr* instr);
 
 std::ofstream output;
 
@@ -50,6 +55,21 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode*
 		}
 		else if (auto* instr = dynamic_cast<AssignmentInstr*>(i)) {
 			emitAssignment(instr);
+		}
+		else if (auto* instr = dynamic_cast<JumpIfTrueInstr*>(i)) {
+			emitJumpIfTrueInstr(instr);
+		}
+		else if (auto* instr = dynamic_cast<JumpIfFalseInstr*>(i)) {
+			emitJumpIfFalseInstr(instr);
+		}
+		else if (auto* instr = dynamic_cast<JumpInstr*>(i)) {
+			emitJump(instr);
+		}
+		else if (auto* instr = dynamic_cast<Label*>(i)) {
+			emitLabel(instr);
+		}
+		else {
+			throw_error(1, fmt::format("No rule for instruction type {}", i->typeName()));
 		}
 	}
 	
@@ -102,93 +122,65 @@ static void emitReturn(ReturnInstr* instr)
 	else if (instr->operand.kind == OperandKind::Variable) {
 		emit(fmt::format("mov eax, [rbp {}]", instr->operand.offset));
 	}
+	else {
+		throw_error(1, "emitReturn: missing rule");
+	}
 
 	emit("mov rsp, rbp");
 	emit("pop rbp");
 	emit("ret");
 }
 
-static void emitBinaryInstr(BinaryInstr* instr)
+static std::string operandText(const Operand& operand)
 {
-	std::string op = binaryOpToAsm(instr->op);
-
-	if (instr->left.kind == OperandKind::Immediate)
+	switch(operand.kind)
 	{
-		if (instr->right.kind == OperandKind::Immediate)
-		{
-			if (instr->op == BinaryOp::ADD || instr->op == BinaryOp::SUB)
-			{
-				emit(fmt::format("mov DWORD PTR [rbp {}], {}",
-					 instr->dest.offset,
-					 instr->left.val));
-				emit(fmt::format("{} DWORD PTR [rbp {}], {}",
-					 op, 
-					 instr->dest.offset, 
-					 instr->right.val));
-			}
-			else if (instr->op == BinaryOp::MUL)
-			{
-				emit(fmt::format("mov r10d, {}", instr->right.val));
-				emit(fmt::format("imul r10d, {}", instr->left.val));
-				emit(fmt::format("mov [rbp {}], r10d", instr->dest.offset));
-			}
-			else throw_error(1, "emitBinaryInstr fail");
-		}
-		else if (instr->right.kind == OperandKind::Temp ||
-		     	 instr->right.kind == OperandKind::Variable)
-		{
-			if (instr->op == BinaryOp::ADD || instr->op == BinaryOp::SUB) {
-				emit(fmt::format("mov r10d, {}", instr->left.val));
-				emit(fmt::format("{} r10d, [rbp {}]", op, instr->right.offset));
-				emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
-			}
-			else if (instr->op == BinaryOp::MUL) {
-				emit(fmt::format("mov r10d, {}", instr->left.val));
-				emit(fmt::format("imul r10d, [rbp {}]", instr->right.offset));
-				emit(fmt::format("mov [rbp {}], r10d", instr->dest.offset));
-			}
-			else throw_error(1, "emitBinaryInstr fail");			
-		}
-			else throw_error(1, "emitBinaryInstr fail");
+		case OperandKind::Immediate:
+			return fmt::format("{}", operand.val);
+		case OperandKind::Temp:
+		case OperandKind::Variable:
+			return fmt::format("[rbp {}]", operand.offset);
+		default:
+			throw_error(1, fmt::format("operandText: invalid OperandKind in {}",
+						operandToStr(operand)));
+			return NULL;
 	}
-	else if (instr->left.kind == OperandKind::Temp ||
-				instr->left.kind == OperandKind::Variable)
-	{
-		if (instr->right.kind == OperandKind::Immediate)
-		{
-			if (instr->op == BinaryOp::ADD || instr->op == BinaryOp::SUB) {
-				emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
-				emit(fmt::format("{} r10d, {}", op, instr->right.val));
-				emit(fmt::format("mov [rbp {}], r10d", instr->dest.offset));
-			}
-			else if (instr->op == BinaryOp::MUL) {
-				emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
-				emit(fmt::format("imul r10d, {}", instr->right.val));
-				emit(fmt::format("mov [rbp {}], r10d", instr->dest.offset));
-			}
-			else throw_error(1, "emitBinaryInstr fail");
-		}
-		else if (instr->right.kind == OperandKind::Temp ||
-					instr->right.kind == OperandKind::Variable)
-		{
-			if (instr->op == BinaryOp::ADD || instr->op == BinaryOp::SUB) {
-				emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
-				emit(fmt::format("{} r10d, [rbp {}]", op, instr->right.offset));
-				emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
-			}
-			else if (instr->op == BinaryOp::MUL) {
-				emit(fmt::format("mov r10d, [rbp {}]", instr->left.offset));
-				emit(fmt::format("imul r10d, [rbp {}]", instr->right.offset));
-				emit(fmt::format("mov [rbp {}], r10d", instr->dest.offset));
-			}
-			else throw_error(1, "emitBinaryInstr fail");
-		}
-		else throw_error(1, "emitBinaryInstr fail");
-	}
-	else throw_error(1, "emitBinaryInstr fail");
 }
 
-std::string binaryOpToAsm(BinaryOp op)
+static void emitBinaryInstr(BinaryInstr* instr)
+{
+	std::string left = operandText(instr->left);
+	std::string right = operandText(instr->right);
+	std::string dest = operandText(instr->dest);
+
+	switch(instr->op)
+	{
+		case BinaryOp::ADD:
+		case BinaryOp::SUB:
+		case BinaryOp::MUL:
+			emit(fmt::format("mov r10d, {}", left));
+			emit(fmt::format("{} r10d, {}", binaryOpToAsm(instr->op), right));
+			emit(fmt::format("mov {}, r10d", dest));
+			break;
+		case BinaryOp::LESS_THAN:
+		case BinaryOp::GREATER_THAN:
+		case BinaryOp::LESSER_OR_EQUAL:
+		case BinaryOp::GREATER_OR_EQUAL:
+		case BinaryOp::NOT_EQUAL:
+		case BinaryOp::EQUAL_TO:
+			emit(fmt::format("mov r10d, {}", left));
+			emit(fmt::format("cmp r10d, {}", right));
+			emit(fmt::format("{} r10b", binaryOpToAsm(instr->op)));
+			emit(fmt::format("movzx r10d, r10b"));
+			emit(fmt::format("mov {}, r10d", dest));
+			break;
+		default:
+			throw_error(1, fmt::format("emitBinaryInstr: No rule for {}",
+									   binaryOpToStr(instr->op)));
+	}
+}
+
+static std::string binaryOpToAsm(BinaryOp op)
 {
 	switch (op)
 	{
@@ -198,6 +190,18 @@ std::string binaryOpToAsm(BinaryOp op)
 			return "sub";
 		case BinaryOp::MUL:
 			return "imul";
+		case BinaryOp::LESS_THAN:
+			return "setl";
+		case BinaryOp::GREATER_THAN:
+			return "setg";
+		case BinaryOp::LESSER_OR_EQUAL:
+			return "setle";
+		case BinaryOp::GREATER_OR_EQUAL:
+			return "setge";
+		case BinaryOp::NOT_EQUAL:
+			return "setne";
+		case BinaryOp::EQUAL_TO:
+			return "sete";
 		default:
 			throw_error(1, "Error in binaryOpToAsm: Missing op translation");
 			exit(1);
@@ -209,7 +213,7 @@ static void emitAssignment(AssignmentInstr* instr)
 	switch (instr->src.kind)
 	{
 		case OperandKind::Immediate:
-			emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->src.val));   
+			emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->src.val));
 			break;
 
 		case OperandKind::Temp:
@@ -227,3 +231,27 @@ static void emitAssignment(AssignmentInstr* instr)
 	}
 }
 
+static void emitJumpIfTrueInstr(JumpIfTrueInstr* instr)
+{
+	emit(fmt::format("mov r10d, {}", operandText(instr->operand)));
+	emit(fmt::format("cmp r10d, 0"));
+	emit(fmt::format("jnz {}", instr->label->name));
+}
+
+static void emitJumpIfFalseInstr(JumpIfFalseInstr* instr)
+{
+	emit(fmt::format("mov r10d, {}", operandText(instr->operand)));
+	emit(fmt::format("cmp r10d, 0"));
+	emit(fmt::format("je {}", instr->label->name));
+}
+
+static void emitLabel(Label* instr)
+{
+	emit("");
+	emit(instr->name.append(":"));
+}
+
+static void emitJump(JumpInstr* instr)
+{
+	emit(fmt::format("jmp {}", instr->label->name));
+}
