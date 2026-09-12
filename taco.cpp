@@ -44,6 +44,18 @@ std::vector<Instruction*> taco(GodNode *program)
 		}
 	}
 
+	// this will be moved to genFunction() later
+	for (Node* node : program->body)
+	{
+		if (auto* func = dynamic_cast<FuncDefNode*>(node))
+		{
+			while (func->frameSize % 16 != 0)
+			{
+				func->frameSize--;
+			}
+		}
+	}
+
 	fmt::print("IR generated\n");
 	return ir;
 }

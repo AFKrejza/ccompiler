@@ -42,7 +42,7 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode*
 	emitni(fmt::format("main: "));
 	emit("push rbp");
 	emit("mov rbp, rsp");
-	emit(fmt::format("sub rsp, {}", -1 * static_cast<FuncDefNode*>(ast->body[0])->frameSize));
+	emit(fmt::format("sub rsp, {}", abs(static_cast<FuncDefNode*>(ast->body[0])->frameSize)));
 	emit("");
 
 	for (Instruction* i : ir)
