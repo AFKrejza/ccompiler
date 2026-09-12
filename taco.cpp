@@ -194,6 +194,7 @@ static Label* newLabel(std::string text)
 static void genAssignment(AssignmentNode* node, FuncDefNode* func)
 {
 	Operand dest = Operand::Variable(node->name, func->getSymbol(node->name).offset);
+	Operand src;
 
 	if (auto* binOp = dynamic_cast<BinaryOpNode*>(node->expression))
 	{
@@ -205,10 +206,15 @@ static void genAssignment(AssignmentNode* node, FuncDefNode* func)
 			case BinaryOp::LOGICAL_AND:
 				genAnd(binOp, dest, func);
 				break;
+			default:
+				src = genExpression(node->expression, func);
+				emit(new AssignmentInstr(dest, src));
 		}
 	}
-	Operand src = genExpression(node->expression, func);
-	emit(new AssignmentInstr(dest, src));
+	else {
+		src = genExpression(node->expression, func);
+		emit(new AssignmentInstr(dest, src));
+	}
 }
 
 static void genOr(BinaryOpNode* node, Operand dest, FuncDefNode* func)

@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
 	std::cout << "\n" << result << "\n";
 	#endif
 
-	fmt::print("success\n");
+	fmt::print("Compiled to a.out\n");
 
 	return 0;
 }

@@ -301,3 +301,31 @@ class TestExpressions:
 	def test_binary_operators(self, compile_and_run, input, expected):
 		#	==	||	&&	 !=	 <	 <=	 >	 >=
 		assert compile_and_run(input) == expected
+
+
+	# extra test for logical OR
+	def test_or(self, compile_and_run):
+		code = textwrap.dedent("""
+		int main()
+		{
+			int a = 2;
+			int b = a * 5;
+			int c = a || b;
+			a = 0;
+			b = a && c;
+
+			return b < c; 
+		}
+		""")
+		assert compile_and_run(code) == 1
+
+		code = textwrap.dedent("""
+		int main()
+		{
+			int a = 2;
+			int b = 5;
+			int c = a || b;
+			return c;
+		}
+		""")
+		assert compile_and_run(code) == 1
