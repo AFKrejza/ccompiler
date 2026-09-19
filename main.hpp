@@ -60,25 +60,49 @@ enum class BinaryOp {
 	GREATER_OR_EQUAL
 };
 
+enum class UnaryOp {
+	NEGATE
+};
+
+
+
 void printIndentLines(int indent);
 
 enum TokenType {
-	SEMICOLON, PLUS, MINUS, ASSIGNMENT, OPEN_PARENTHESES, CLOSED_PARENTHESES,
-	OPEN_SQUARE_BRACKET, CLOSED_SQUARE_BRACKET, OPEN_CURLY_BRACE, CLOSED_CURLY_BRACE,
-	COMMA, ASTERISK,
-
-	GREATER_THAN, LESS_THAN, EQUAL_TO, GREATER_OR_EQUAL, LESSER_OR_EQUAL,
+	SEMICOLON,
+	PLUS,
+	MINUS,
+	ASSIGNMENT,
+	OPEN_PARENTHESES,
+	CLOSED_PARENTHESES,
+	OPEN_SQUARE_BRACKET,
+	CLOSED_SQUARE_BRACKET, 
+	OPEN_CURLY_BRACE, 
+	CLOSED_CURLY_BRACE,
+	COMMA, 
+	ASTERISK,
+	GREATER_THAN, 
+	LESS_THAN, 
+	EQUAL_TO, 
+	GREATER_OR_EQUAL, 
+	LESSER_OR_EQUAL,
 	NOT_EQUAL,
-
-	LOGICAL_NOT, LOGICAL_AND, LOGICAL_OR,
-	BITWISE_NOT, BITWISE_AND, BITWISE_OR,
-
-	IDENTIFIER, CHAR, SHORT, INT, LONG, STRING_LITERAL, INTEGER,
-
-	IF, ELSE, 
-
+	LOGICAL_NOT, 
+	LOGICAL_AND, 
+	LOGICAL_OR,
+	BITWISE_NOT, 
+	BITWISE_AND, 
+	BITWISE_OR,
+	IDENTIFIER, 
+	CHAR, 
+	SHORT, 
+	INT, 
+	LONG, 
+	STRING_LITERAL, 
+	INTEGER,
+	IF,
+	ELSE, 
 	RETURN,
-
 	END_OF_FILE,
 };
 
@@ -118,7 +142,7 @@ class Token {
 
 		void print()
 		{
-			fmt::print("   TokenType: {} \n", token_type_to_string(tokenType));
+			fmt::print("   TokenType: {} \n", tokenTypeToStr(tokenType));
 			fmt::print(" Lexeme: {}\n", lexeme);
 			fmt::print("Literal: {}\n", std::visit(LiteralPrintVisitor{}, literal));
 			fmt::print("   Line: {}\n", line);
@@ -129,7 +153,7 @@ class Token {
 		// contains all symbols and keywords
 		static const std::unordered_map<TokenType, std::string> printmap;
 
-		static std::string token_type_to_string(TokenType type)
+		static std::string tokenTypeToStr(TokenType type)
 		{
 			int int_type = (int)type;
 
@@ -261,6 +285,39 @@ class BinaryOpNode : public Node {
 		void killChildren() override {
 			left->killChildren();
 			right->killChildren();
+			delete this;
+		}
+};
+
+UnaryOp TokenTypeToUnaryOp(TokenType op);
+std::string unaryOpToStr(UnaryOp op);
+
+class UnaryOpNode : public Node {
+	public:
+		UnaryOp op;
+		Node* expression;
+
+		UnaryOpNode(int line, TokenType op, Node* expression) : Node(line) {
+			this->op = TokenTypeToUnaryOp(op);
+			this->expression = expression;
+		}
+		
+		void printChildren(int indent) override {
+			print(indent);
+			expression->printChildren(indent + 1);
+		}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("{} {}\n", typeName(), unaryOpToStr(op));
+		}
+
+		std::string typeName() override {
+			return "UnaryOpNode";
+		}
+
+		void killChildren() override {
+			expression->killChildren();
 			delete this;
 		}
 };
@@ -562,6 +619,24 @@ class BinaryInstr : public Instruction {
 		}
 };
 
+class UnaryInstr : public Instruction {
+	public:
+		Operand dest;
+		Operand src;
+		UnaryOp op;
+
+		UnaryInstr(Operand dest, Operand src, UnaryOp op) {
+			this->dest = dest;
+			this->src = src;
+			this->op = op;
+		}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("UnaryInstr {} {}\n", unaryOpToStr(op), operandToStr(dest));
+		}
+};
+
 
 class ReturnInstr : public Instruction {
 	public:
@@ -694,8 +769,12 @@ class JumpIfInstr : public JumpInstr {
 
 		void print(int indent) override {
 			printIndentLines(indent);
-			fmt::print("JumpIf TODO: print comparand operand and condition {} {}\n",
-				       operand.name,
+			fmt::print("JumpIf({}({}) {} {}({})) -> {} \n",
+					   operand.name,
+					   operand.val,
+					   binaryOpToStr(condition),
+					   comparand.name,
+					   comparand.val,
 					   label->name);
 		}
 

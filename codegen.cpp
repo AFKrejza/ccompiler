@@ -21,6 +21,7 @@ static void emitJumpIfTrueInstr(JumpIfTrueInstr* instr);
 static void emitJumpIfFalseInstr(JumpIfFalseInstr* instr);
 static void emitLabel(Label* instr);
 static void emitJump(JumpInstr* instr);
+static void emitUnaryInstr(UnaryInstr* instr);
 
 std::ofstream output;
 
@@ -52,6 +53,9 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode*
 		}
 		else if (auto* instr = dynamic_cast<BinaryInstr*>(i)) {
 			emitBinaryInstr(instr);
+		}
+		else if (auto* instr = dynamic_cast<UnaryInstr*>(i)) {
+			emitUnaryInstr(instr);
 		}
 		else if (auto* instr = dynamic_cast<AssignmentInstr*>(i)) {
 			emitAssignment(instr);
@@ -254,4 +258,19 @@ static void emitLabel(Label* instr)
 static void emitJump(JumpInstr* instr)
 {
 	emit(fmt::format("jmp {}", instr->label->name));
+}
+
+// The dest of a unary instruction should always be a temporary register.
+static void emitUnaryInstr(UnaryInstr* instr)
+{
+	assert(instr->dest.kind != OperandKind::Immediate);
+	if (instr->op == UnaryOp::NEGATE)
+	{
+		emit(fmt::format("mov r10d, {}", operandText(instr->src)));
+		emit("neg r10d");
+		emit(fmt::format("mov {}, r10d", operandText(instr->dest)));
+	}
+	else {
+		throw_error(1, "emitUnaryInstr: invalid Unary Instruction");
+	}
 }

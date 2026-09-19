@@ -45,14 +45,13 @@ std::vector<Instruction*> taco(GodNode *program)
 	}
 
 	// this will be moved to genFunction() later
+	// for 16-byte aligning each stack frame
 	for (Node* node : program->body)
 	{
 		if (auto* func = dynamic_cast<FuncDefNode*>(node))
 		{
-			while (func->frameSize % 16 != 0)
-			{
-				func->frameSize--;
-			}
+			int pad = func->frameSize % 16;
+			func->frameSize = func->frameSize + 16 - (pad ? pad : 16);
 		}
 	}
 
@@ -84,6 +83,13 @@ static Operand genExpression(Node *node, FuncDefNode* func)
 										 genExpression(binOp->right, func));
 
 		emit(binInstr);
+		return vreg;
+	}
+	else if (auto* unOp = dynamic_cast<UnaryOpNode*>(node)) {
+		vreg = Operand::Temp(newVreg(), func->frameSize -= 4);
+		Operand src = genExpression(unOp->expression, func);
+		auto* unInstr = new UnaryInstr(vreg, src, unOp->op);
+		emit(unInstr);
 		return vreg;
 	}
 	else if (auto* var = dynamic_cast<VariableNode*>(node)) {
@@ -148,11 +154,10 @@ BinaryOp TokenTypeToBinaryOp(TokenType op) {
 		case GREATER_OR_EQUAL:
 			return BinaryOp::GREATER_OR_EQUAL;
 		default:
-			throw_error(1, "Invalid TokenType to BinaryOp conversion");
+			throw_error(1, fmt::format("Invalid TokenType to BinaryOp conversion: type {}", op));
 			exit(1);
 	}
 }
-
 
 std::string binaryOpToStr(BinaryOp op) {
 	switch (op) {
@@ -197,7 +202,7 @@ static void genDeclaration(DeclarationNode* node, FuncDefNode* func)
 // label generator: increment as usual,
 // but also include .jump_true_7 for example
 // so it'll just append the number which guarantees
-// unique labels AS LONG AS labels never contain numbers.
+// unique labels AS LONG AS labels never contain numbers. !!!
 static Label* newLabel(std::string text)
 {
 	return new Label(text.append(std::to_string(++labelCount)));

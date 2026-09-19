@@ -8,7 +8,7 @@
 #include "main.hpp"
 
 /*
-g++ main.cpp parser.cpp lexer.cpp sema.cpp taco.cpp codegen.cpp -o main -lfmt && ./main source.c
+g++ main.cpp parser.cpp lexer.cpp sema.cpp taco.cpp codegen.cpp -o main -lfmt && ./main src.c
 	
 	-DLEX to print token list
 	-DAST to print validated AST

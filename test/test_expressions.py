@@ -47,7 +47,19 @@ class TestExpressions:
 		{
 			return (1 + 1) + 2;
 		}
-		"""), 4)
+		"""), 4),
+		(textwrap.dedent("""
+		int main()
+		{
+			return -2 - -2;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			return -(1) + 2;
+		}
+		"""), 1),
 	])
 	def test_vars(self, compile_and_run, input, expected):
 		assert compile_and_run(input) == expected

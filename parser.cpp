@@ -8,12 +8,18 @@ extern std::vector<Token> tokenList;
 static int current = 0;
 
 static Token advance(int advanceBy = 1);
-static Token retreat(int retreatBy = -1);
+static Token retreat(int retreatBy = 1);
 static Token peek(int peekBy = 1);
-static Token token();
+static inline Token token();
 
 static Node *parseExpression();
+static Node* parseLogicalOr();
+static Node* parseLogicalAnd();
+static Node* parseEquality();
+static Node* parseRelational();
+static Node* parseAdditive();
 static Node *parseTerm();
+static Node* parseUnary();
 static Node *parseFactor();
 static Node *parseFuncDef(GodNode* parent);
 static std::vector<Parameter> parseParamList();
@@ -41,7 +47,7 @@ GodNode *parser()
 			throw_error_line(1, 
 							 token().line, 
 							 fmt::format("Parser failure: no rule for token {}",
-								token().token_type_to_string(token().tokenType)));
+								token().tokenTypeToStr(token().tokenType)));
 		}
 	}
 
@@ -77,110 +83,162 @@ static Token token()
 // starts at first token of expression, ends after semicolon
 static Node *parseExpression()
 {
-	static int nested; // i.e. expr(expr)
-
 	Node *root;
 
-	while (token().tokenType != END_OF_FILE &&
-		   token().tokenType != SEMICOLON &&
-		   token().tokenType != CLOSED_CURLY_BRACE)
-	{ // if it's a binary operator
-		if (token().tokenType == PLUS || 
-			token().tokenType == MINUS || 
-			token().tokenType == ASTERISK ||
-			token().tokenType == LOGICAL_AND ||
-			token().tokenType == LOGICAL_OR ||
-			token().tokenType == EQUAL_TO ||
-			token().tokenType == NOT_EQUAL ||
-			token().tokenType == LESS_THAN || 
-			token().tokenType == LESSER_OR_EQUAL ||
-			token().tokenType == GREATER_THAN ||
-			token().tokenType == GREATER_OR_EQUAL
-		)
-		{
-			BinaryOpNode *newRoot = new BinaryOpNode(token().line, token().tokenType);
-			newRoot->left = root;
-			advance();
-			if (token().tokenType == OPEN_PARENTHESES) {
-				advance();
-				nested++;
-				newRoot->right = parseExpression();
-			}
-			else {
-				newRoot->right = parseTerm();
-			}
-			root = newRoot;
-		}
-		else if (token().tokenType == OPEN_PARENTHESES) {
-			nested++;
-			advance();
-			if (nested > 1)
-				root = parseExpression();
-		}
-		else if (token().tokenType == CLOSED_PARENTHESES) {
-			nested--;
-			advance();
-		}
-		else {
-			root = parseTerm();
-		}
-	}
-	// fmt::print("nested: {}\n", nested);
-	if (token().tokenType == SEMICOLON) 
+	if (token().tokenType != END_OF_FILE &&
+		token().tokenType != SEMICOLON)
 	{
-		advance();
-		if (nested != 0)
-		{
-			std::string type = nested > 0 ? "closing" : "opening";
-			int count = nested < 0 ? nested * -1 : nested;
-			throw_error_line(1, 
-							 token().line, 
-							 fmt::format("Missing {} {} parentheses", count, type));
-		}
+		root = parseLogicalOr();
 	}
+	return root;
+}
 
+static Node* parseLogicalOr()
+{
+	Node* root = parseLogicalAnd();
+
+	while (token().tokenType == LOGICAL_OR)
+	{
+		auto* node = new BinaryOpNode(token().line, token().tokenType);
+		node->left = root;
+		advance();
+		node->right = parseLogicalAnd();
+		root = node;
+	}
+	return root;
+}
+
+static Node* parseLogicalAnd()
+{
+	Node* root = parseEquality();
+
+	while (token().tokenType == LOGICAL_AND)
+	{
+		auto* node = new BinaryOpNode(token().line, token().tokenType);
+		node->left = root;
+		advance();
+		node->right = parseEquality();
+		root = node;
+	}
+	return root;
+}
+
+static Node* parseEquality()
+{
+	Node* root = parseRelational();
+
+	while (token().tokenType == EQUAL_TO ||
+		token().tokenType == NOT_EQUAL)
+	{
+		auto* node = new BinaryOpNode(token().line, token().tokenType);
+		advance();
+		node->left = root;
+		node->right = parseRelational();
+		root = node;
+	}
+	return root;
+}
+
+static Node* parseRelational()
+{
+	Node* root = parseAdditive();
+
+	while (token().tokenType == LESS_THAN ||
+		   token().tokenType == LESSER_OR_EQUAL ||
+		   token().tokenType == GREATER_THAN ||
+		   token().tokenType == GREATER_OR_EQUAL)
+	{
+		auto* node = new BinaryOpNode(token().line, token().tokenType);
+		advance();
+		node->left = root;
+		node->right = parseAdditive();
+		root = node;
+	}
+	return root;
+}
+
+static Node* parseAdditive()
+{
+	Node* root = parseTerm();
+
+	while (token().tokenType == PLUS ||
+		   token().tokenType == MINUS)
+	{
+		auto* node = new BinaryOpNode(token().line, token().tokenType);
+		advance();
+		node->left = root;
+		node->right = parseTerm();
+		root = node;
+	}
 	return root;
 }
 
 static Node *parseTerm()
 {
-	Node *root = parseFactor();
-	advance();
+	Node *root;
 
-	// (("*") factor)*
-	while (token().tokenType == ASTERISK && peek().tokenType == INTEGER) {
+	root = parseUnary();
+
+	while (token().tokenType == ASTERISK)
+	{
 		BinaryOpNode *newRoot = new BinaryOpNode(token().line, token().tokenType);
 		advance();
 
-		Node *newInt = parseFactor();
-		advance();
+		Node *newFactor = parseUnary();
 
 		newRoot->left = root;
-		newRoot->right = newInt;
+		newRoot->right = newFactor;
 		root = newRoot;
 	}
+	return root;
+}
 
+static Node* parseUnary()
+{
+	Node* root;
+
+	if (token().tokenType == MINUS)
+	{
+		UnaryOpNode *unop = new UnaryOpNode(token().line, token().tokenType, NULL);
+		advance();
+		unop->expression = parseFactor();
+		root = unop;
+	}
+	else {
+		root = parseFactor();
+	}
 	return root;
 }
 
 static Node *parseFactor()
 {
+	Node* factor;
+
 	if (token().tokenType == INTEGER)
 	{
-		return new ImmediateNode(token().line, std::get<int>(token().literal));
+		factor = new ImmediateNode(token().line, std::get<int>(token().literal));
+		advance();
 	}
 	else if (token().tokenType == IDENTIFIER)
 	{
-		return new VariableNode(token().line, token().lexeme);
+		factor = new VariableNode(token().line, token().lexeme);
+		advance();
+	}
+	else if (token().tokenType == OPEN_PARENTHESES)
+	{
+		advance();
+		factor = parseExpression();
+		assert(token().tokenType == CLOSED_PARENTHESES);
+		advance();
 	}
 	else {
 		throw_error_line(1, 
 						 token().line, 
 						 fmt::format("Invalid factor: '{}', type '{}'", 
 							token().lexeme, 
-							token().token_type_to_string(token().tokenType)));
-		return NULL;
+							token().tokenTypeToStr(token().tokenType)));
 	}
+	return factor;
 }
 
 static Node *parseFuncDef(GodNode* parent)
@@ -235,23 +293,29 @@ static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode)
 			ReturnNode *retNode = new ReturnNode(token().line);
 			advance();
 			retNode->expression = parseExpression();
+			assert(token().tokenType == SEMICOLON);
+			advance();
 			body.push_back(retNode);
 		}
 		else if (token().tokenType == INT &&
 				 peek(1).tokenType == IDENTIFIER)
 		{
 			body.push_back(parseDeclaration());
+			assert(token().tokenType == SEMICOLON);
+			advance();
 		}
 		else if (token().tokenType == IDENTIFIER &&
 				 peek(1).tokenType == ASSIGNMENT)
 		{
 			body.push_back(parseAssignment());
+			assert(token().tokenType == SEMICOLON);
+			advance();
 		}
 		else {
 			throw_error_line(1, 
 							 token().line, 
 							 fmt::format("parseFuncBody failure to parse {}", 
-								token().token_type_to_string(token().tokenType)));
+								token().tokenTypeToStr(token().tokenType)));
 		}
 	}
 	return body;
@@ -291,8 +355,8 @@ static Node* parseDeclaration()
 	if (peek().tokenType == ASSIGNMENT) {
 		node->assignment = parseAssignment();
 	}
-	else if (peek(1).tokenType == SEMICOLON) {
-		advance(2);
+	else if (peek().tokenType == SEMICOLON) {
+		advance();
 	}
 	else {
 		throw_error_line(1, 
@@ -313,4 +377,30 @@ static AssignmentNode* parseAssignment()
 	advance(2);
 	node->expression = parseExpression();
 	return node;	
+}
+
+
+UnaryOp TokenTypeToUnaryOp(TokenType op) {
+	switch (op)
+	{
+		case MINUS:
+			return UnaryOp::NEGATE;
+		default:
+			throw_error(1, fmt::format("TokenTypeToUnaryOp: no rule for token {}",
+				Token::tokenTypeToStr(op)));
+			exit(1);
+	}
+}
+
+std::string unaryOpToStr(UnaryOp op)
+{
+	switch (op)
+	{
+		case UnaryOp::NEGATE:
+			return "NEGATE";
+		default:
+			throw_error(1, fmt::format("Error in binaryOpToAsm: Missing op translation for {}",
+				unaryOpToStr(op)));
+			exit(1);
+	}
 }

@@ -104,6 +104,10 @@ static Type* evalType(Node *node, FuncDefNode* func)
 			exit(1);
 		}
     }
+	else if (auto* unOp = dynamic_cast<UnaryOpNode*>(node))
+	{
+		return evalType(unOp->expression, func);
+	}
     else if (auto *intNode = dynamic_cast<ImmediateNode*>(node))
 	{
         return new ImmediateType();

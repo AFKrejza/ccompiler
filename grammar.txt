@@ -8,27 +8,33 @@ using EBNF (more or less):
 
 Nonterminals are wrapped in <>
 Individual tokens are in ""
-[...] contains optional elements (zero or more times)
+[...] contains optional elements (zero or one time)
 {...} states repetition (zero or more times)
 (...) groups choices or sequences together
 
 Terminals: type, IDENTIFIER, INTEGER
 
-2026-09-10 parser grammar:
+2026-09-19 parser grammar:
 
-<program> = <function>
-<function> = "int" IDENTIFIER "(" <paramList> ")" <functionBody>
-<paramList> = [ <parameter> { "," <parameter> } ]
-<parameter> = "int" IDENTIFIER
-<functionBody> =  "{" { <statement> } "}"
-<ret> = "return" <expression>
-<expression> = <term> { <binop> <term> }
-<binop> = "+" | "-" | "*" | "&&" | "||" | "==" | "!=" | "<" | "<=" | ">" | ">=" // TODO: && and || don't support nesting
-<term> = <factor> { "*" <factor> }
-<factor> = INTEGER | IDENTIFIER | "(" <expression> ")" // expression parsing is a bit janky, this isn't totally accurate
-<statement> = <ret> | <declaration>
-<declaration> = "int" IDENTIFIER [ "=" <expression> ]
-<assignment> = IDENTIFIER "=" <expression>
+<program>		= <function>
+<function>		= "int" IDENTIFIER "(" <paramList> ")" <functionBody>
+<paramList>		= [ <parameter> { "," <parameter> } ]
+<parameter>		= "int" IDENTIFIER
+<functionBody>	=  "{" { <statement> } "}"
+<statement>		= <ret> | <declaration> | <assignment>
+<ret>			= "return" <expression>
+<declaration>	= "int" IDENTIFIER [ "=" <expression> ]
+<expression>	= <logicalOr>
+<logicalOr>		= <logicalAnd>	{ "||" <logicalAnd> }
+<logicalAnd>	= <equality>	{ "&&" <equality> }
+<equality>		= <relational>	{ ( "==" | "!=") <relational> }
+<relational>	= <additive>	{ ( "<" | "<=" | ">" | ">=" ) <additive> }
+<additive>		= <term>		{ ("+" | "-") <term> }
+<term>			= <unary>		{ "*" <unary> }
+<unary>			= <unop> <unary> | <factor>
+<unop>			= "-"
+<factor>		= INTEGER | IDENTIFIER | "(" <expression> ")"
+
 
 TODO: Add the AST definition. Add a definition to every stage of the compiler.
 I already occasionally forget that I implemented something. Sandler p.73 pdf 113
