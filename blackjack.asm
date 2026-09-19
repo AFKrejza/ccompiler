@@ -1,5 +1,22 @@
+; run with:
+; nasm -felf64 blackjack.asm && ld blackjack.o && ./a.out
+
+; Basic blackjack implementation in x86-64 assembly
+; Dealer stands on 17
+
+; commands: stand = s, hit = h
+
+
+; 2026-09-20 changelog:
+; dealer now shows first card at start
+; dealer now hits until 17 then compares to player
+; if player has 21, dealer's cards will be shown in case of a tie
+; implement Fisher-Yates algorithm for card shuffle
+; parametrize player/dealer functions
+; add session stats (hands/wins/losses/ties)
+
 ; debugging:
-; nasm -felf64 -g -F dwarf main.asm && ld main.o
+; nasm -felf64 -g -F dwarf blackjack.asm && ld blackjack.o
 ; gdb ./a.out
 ; in gdb: layout regs or layout asm
 ; set breakpoints e.g. break _start
@@ -9,19 +26,6 @@
 ; util/u, next/n, nexti/ni, return, finish/fin
 ; watch
 ; and so on
-
-; run with:
-; nasm -felf64 main.asm && ld main.o && ./a.out
-
-; Very basic blackjack implementation in x86-64 assembly
-; Dealer stands on 17
-; Populates the cards array and then shuffles the cards into the deck array.
-;
-
-; send commands: stand = s, hit = h
-; 
-; accounts for aces being 1 or 11 via calculate_(player|dealer)_total
-; once player stands, dealer draws until hits 17 or higher
 
 
 %macro debug 0
@@ -60,6 +64,8 @@ DEALER_STANDS equ 17
 DECK_SIZE equ 52
 INPUT_BUFFER_SIZE equ 10
 ACE_VALUE equ 11
+ENUM_PLAYER equ 0
+ENUM_DEALER equ 1
 
 struc Card
 	.value: resq 1
@@ -69,8 +75,7 @@ endstruc
 
 
 section .bss
-	cards: resb Card_size * DECK_SIZE ; don't overwrite!
-	deck: resb Card_size * DECK_SIZE ; current deck
+	cards: resb Card_size * DECK_SIZE
 
 	player_hand_start resq 1 ; start index
 	player_hand_end resq 1 ; end index
@@ -84,6 +89,10 @@ section .bss
 	total_str_buffer: resb 30 ; for printing player/dealer total
 	total_str_buffer_len equ $ - total_str_buffer
 
+	hand_count resq 1
+	win_count resq 1
+	loss_count resq 1
+	tie_count resq 1
 
 section .data
 	newline db 10
@@ -123,8 +132,17 @@ section .data
 	text_invalid_input db "Invalid input.", 10, 0
 	text_invalid_input_len equ $ - text_invalid_input - 1
 
-    clear_screen db 27, 91, 50, 74, 27, 91, 72, 10   ; ESC [ 2 J ESC [ H
+    clear_screen db 27, 91, 50, 74, 27, 91, 72, 10, 10, 10, 10, 10   ; ESC [ 2 J ESC [ H
     clear_screen_len equ $ - clear_screen
+
+	text_hand_count db "Hand # ", 0
+	text_hand_count_len equ $ - text_hand_count - 1
+	text_wins db "Won ", 0
+	text_wins_len equ $ - text_wins - 1
+	text_losses db "Lost ", 0
+	text_losses_len equ $ - text_losses - 1
+	text_ties db "Tied ", 0
+	text_ties_len equ $ - text_ties - 1
 
 
 global _start
@@ -132,7 +150,12 @@ global _start
 section .text
 
 _start:
-	call generate_cards ; generate base cards
+	call initialize_cards
+
+	mov QWORD [hand_count], 0
+	mov QWORD [win_count], 0
+	mov QWORD [loss_count], 0
+	mov QWORD [tie_count], 0
 
 	mov rdi, text_welcome
 	mov rsi, text_welcome_len
@@ -140,35 +163,57 @@ _start:
 	call get_user_input ; press enter
 
 	play_again:
-	mov QWORD [player_total], 0
-	mov QWORD [dealer_total], 0
-	; randomize the order and insert them into deck
-	call generate_deck
-
 	mov rdi, clear_screen
 	mov rsi, clear_screen_len
 	call write
+	call print_all_stats
+
+	inc QWORD [hand_count]
+	mov QWORD [player_total], 0
+	mov QWORD [dealer_total], 0
+	; randomize the order and insert them into cards
+	call shuffle_cards
 
 	; logic: save the start and end indexes of the player's cards
 	; and print them on each turn
 
+	; player init
 	mov QWORD [player_hand_start], 0
 	card_offset rcx, [player_hand_start]
-	mov rbx, QWORD [deck + rcx + Card.value]
+	mov rbx, QWORD [cards + rcx + Card.value]
 	add QWORD [player_total], rbx
-
 	mov QWORD [player_hand_end], 1
 	card_offset rcx, [player_hand_end]
-	mov rbx, QWORD [deck + rcx + Card.value]
+	mov rbx, QWORD [cards + rcx + Card.value]
 	add QWORD [player_total], rbx
 
+	; dealer init
+	mov QWORD [dealer_hand_end], 11
+	mov QWORD [dealer_hand_start], 11
+	card_offset rcx, [dealer_hand_start]
+	mov rbx, QWORD [cards + rcx + Card.value]
+	add QWORD [dealer_total], rbx
+
+	; show dealer card and total
+	mov rdi, ENUM_DEALER
+	call print_member
+
+	; add second dealer card to total in case of player 21
+	mov QWORD [dealer_hand_end], 12
+	card_offset rcx, [dealer_hand_end]
+	mov rbx, QWORD [cards + rcx + Card.value]
+	add QWORD [dealer_total], rbx
+
+	call check_blackjack
+
 	player_turn_start:
-	call calculate_player_total
+	mov rdi, ENUM_PLAYER
+	call calculate_member_total
 
-	call print_player_total
-	call print_player_hand
+	mov rdi, ENUM_PLAYER
+	call print_member
 
-	call check_player_total
+	jmp check_player_total
 	
 	turn_input:
 	mov rdi, text_turn
@@ -191,58 +236,53 @@ player_hit:
 	; add the next card
 	inc QWORD [player_hand_end]
 	card_offset rcx, [player_hand_end]
-	mov rbx, QWORD [deck + rcx + Card.value]
+	mov rbx, QWORD [cards + rcx + Card.value]
 	add QWORD [player_total], rbx
 	jmp player_turn_start
 
+
 ; calculate dealer
 player_stand:
-	; set dealer_hand_start to player_hand_end + 1
-	; set dealer_hand_end to dealer_hand_start + 1
-	mov rax, QWORD [player_hand_end]
-	
-	inc rax
-	mov QWORD [dealer_hand_start], rax
-	card_offset rcx, [dealer_hand_start]
-	mov rbx, QWORD [deck + rcx + Card.value]
-	add QWORD [dealer_total], rbx
+
+	mov rax, [dealer_hand_start]
+
+	.check_score:
+
+	push rax
+	mov rdi, ENUM_DEALER
+	call print_member
+	pop rax
+
+	; keep hitting
+	cmp QWORD [dealer_total], 17
+	jl .next_card
+
+	cmp QWORD [dealer_total], 21
+	jg player_win
+
+	; check if dealer is higher than player
+	mov rdx, [player_total]
+	cmp rdx, [dealer_total]
+	jg player_win
+	je player_tie
+	jl player_lose
 
 	.next_card:
+	
 	inc rax
 	mov QWORD [dealer_hand_end], rax
 	card_offset rcx, [dealer_hand_end]
-	mov rbx, QWORD [deck + rcx + Card.value]
+	mov rbx, QWORD [cards + rcx + Card.value]
 	add QWORD [dealer_total], rbx
 
 	push rax
 	push rbx
-	call calculate_dealer_total
+	mov rdi, ENUM_DEALER
+	call calculate_member_total
 	pop rbx
 	pop rax
 
-	push rax
-	call print_dealer_total
-	call print_dealer_hand
-	pop rax
-
-	; check if dealer is <= 21
-	cmp QWORD [dealer_total], 21
-	jg player_win
-	; je player_tie
-
-	; check if dealer is higher than player
-	mov rdx, [dealer_total]
-	cmp rdx, [player_total]
-	jg player_lose
-	je player_tie
-
-	; checks if dealer is 17 or higher but lower than player
-	cmp rdx, 17
-	jge player_win
-
-
-	jmp .next_card
-
+	jmp .check_score
 
 
 player_invalid_input:
@@ -253,72 +293,55 @@ player_invalid_input:
 
 
 check_player_total:
-	; possibly some bad stack behavior with the call but no ret.
 	cmp QWORD [player_total], 21
-	je player_win
-	jl turn_input
-	jmp player_lose
+	jle turn_input
+	jg player_lose
 
 
-; recalculate the total taking into account aces
-calculate_player_total:
-	xor rax, rax ; total
-	xor r11, r11 ; total aces
-	xor r8, r8 ; inc
-
-	; calculate total and count aces
-	.for_loop:
-		mov r9, [player_hand_start]
-		add r9, r8
-		cmp r9, [player_hand_end]
-		jg .for_loop_end
-
-		card_offset rcx, r9
-		mov rbx, QWORD [deck + rcx + Card.value]
-		add rax, rbx
-
-		cmp rbx, ACE_VALUE
-		jne .skip
-		; is an ace
-		inc r11
-
-		.skip:
-		inc r8
-		jmp .for_loop
-	.for_loop_end:
-	mov [player_total], rax
-
-	; if > 21, check for aces and sub
-	.ace_loop:
+check_blackjack:
+	; if player starts with 21, check dealer_total for 21 as well, else player won
 	cmp QWORD [player_total], 21
-	jle .end
-	; is greater
-	cmp r11, 0
-	jle .end
-	; has aces
-	sub QWORD [player_total], 10
-	dec r11
-	jmp .ace_loop
-
-	.end:
+	jne .tardigrade
+	cmp QWORD [dealer_total], 21
+	je player_tie
+	mov rdi, ENUM_PLAYER
+	call print_member
+	mov rdi, ENUM_DEALER
+	call print_member
+	jmp player_win
+	.tardigrade:
 	ret
 
 
-; copy pasting cuz i cba to parametrize it
-calculate_dealer_total:
+calculate_member_total:
+	; rdi = ENUM_PLAYER/DEALER
+	cmp rdi, ENUM_PLAYER
+	je .player
+	mov r13, dealer_hand_start
+	mov r14, dealer_hand_end
+	mov r15, dealer_total
+	jmp .calc
+
+	.player:
+	mov r13, player_hand_start
+	mov r14, player_hand_end
+	mov r15, player_total
+
+	.calc:
+	; recalculate the total taking into account aces
 	xor rax, rax ; total
 	xor r11, r11 ; total aces
 	xor r8, r8 ; inc
 
 	; calculate total and count aces
 	.for_loop:
-		mov r9, [dealer_hand_start]
+		mov r9, [r13]
 		add r9, r8
-		cmp r9, [dealer_hand_end]
+		cmp r9, [r14]
 		jg .for_loop_end
 
 		card_offset rcx, r9
-		mov rbx, QWORD [deck + rcx + Card.value]
+		mov rbx, QWORD [cards + rcx + Card.value]
 		add rax, rbx
 
 		cmp rbx, ACE_VALUE
@@ -330,17 +353,17 @@ calculate_dealer_total:
 		inc r8
 		jmp .for_loop
 	.for_loop_end:
-	mov [dealer_total], rax
+	mov [r15], rax
 
 	; if > 21, check for aces and sub
 	.ace_loop:
-	cmp QWORD [dealer_total], 21
+	cmp QWORD [r15], 21
 	jle .end
 	; is greater
 	cmp r11, 0
 	jle .end
 	; has aces
-	sub QWORD [dealer_total], 10
+	sub QWORD [r15], 10
 	dec r11
 	jmp .ace_loop
 
@@ -352,6 +375,7 @@ player_win:
 	mov rdi, text_win
 	mov rsi, text_win_len
 	call write
+	inc QWORD [win_count]
 	jmp replay
 
 
@@ -359,6 +383,7 @@ player_lose:
 	mov rdi, text_lose
 	mov rsi, text_lose_len
 	call write
+	inc QWORD [loss_count]
 	jmp replay
 
 
@@ -366,6 +391,7 @@ player_tie:
 	mov rdi, text_tie
 	mov rsi, text_tie_len
 	call write
+	inc QWORD [tie_count]
 	jmp replay
 
 
@@ -409,20 +435,20 @@ write:
 	ret
 
 
-write_newln:
+print_newln:
 	mov rdi, newline
 	mov rsi, 1
 	call write
 	ret
 
-write_comma_s:
+print_comma_s:
 	mov rdi, comma_s
 	mov rsi, 2
 	call write
 	ret
 
 
-generate_cards:
+initialize_cards:
 	push rbp
 	mov rbp, rsp
 	sub rsp, 64
@@ -443,7 +469,7 @@ generate_cards:
 		.loop_num_inner:
 			card_offset r8, rcx
 			mov QWORD [cards + r8 + Card.value], rbx
-			mov QWORD [cards + r8 + Card.type], 78 ; N
+			mov QWORD [cards + r8 + Card.type], '_'
 			mov r9, QWORD [rbp + rdx] ; suit
 			mov QWORD [cards + r8 + Card.suit], r9
 			inc rcx
@@ -483,140 +509,93 @@ generate_cards:
 	ret
 
 
-reset_deck:
+shuffle_cards:
+	; implements the Fisher-Yates shuffle
+	; start from card n
+	; generate random index from 0 to n
+	; swap those cards
+	; repeat for n - 1 until n == 1
 	push rbp
 	mov rbp, rsp
-
-	xor eax, eax
+	
+	mov rbx, 52
 	.loop:
-		mov ebx, eax
-		imul ebx, Card_size
-		mov QWORD [deck + ebx], 0
-		inc eax
-		cmp eax, DECK_SIZE
-		jl .loop
+	cmp rbx, 1
+	je .break
 
-	mov rsp, rbp
-	pop rbp
-	ret
+	rdseed rax ; operand
+	xor rdx, rdx
+	mov rcx, rbx
+	div rcx ; remainder (index) is in rdx
 
+	; swap cards in index rbx to index rdx - 1
+	mov rcx, rbx
+	dec rcx
+	card_offset r14, rcx
+	card_offset r15, rdx
+	mov rdi, [cards + r14 + Card.value]
+	mov rsi, [cards + r15 + Card.value]
+	mov [cards + r14 + Card.value], rsi
+	mov [cards + r15 + Card.value], rdi
+	mov rdi, [cards + r14 + Card.type]
+	mov rsi, [cards + r15 + Card.type]
+	mov [cards + r14 + Card.type], rsi
+	mov [cards + r15 + Card.type], rdi
+	mov rdi, [cards + r14 + Card.suit]
+	mov rsi, [cards + r15 + Card.suit]
+	mov [cards + r14 + Card.suit], rsi
+	mov [cards + r15 + Card.suit], rdi
 
-generate_deck:
-	push rbp
-	mov rbp, rsp
+	dec rbx
+	jmp .loop
 
-	call reset_deck
-
-	; inc through the original cards array
-	; generate an index and insert that card into deck
-
-	; rax = 0
-	; .loop:
-	; if rax == DECK_SIZE, go to .break
-	; generate random seed
-	; modulo DECK_SIZE it, that's the index
-	; if the value there is 0
-	; 	copy the rax element in cards to that deck index
-	; 	increment rax
-	; else goto .loop
-
-	xor rbx, rbx
-	.loop:
-		cmp rbx, DECK_SIZE
-		jge .break
-
-		rdseed rax ; sort of a Las Vegas algorithm
-		xor rdx, rdx
-		mov rcx, DECK_SIZE
-		div rcx			; puts mod index of deck in rdx
-		
-		; check if blank
-		mov rsi, rdx
-		imul rsi, Card_size	; address of deck index
-		cmp QWORD [deck + rsi], 0
-		jne .loop
-		
-		; copy
-		card_offset r8, rbx
-		mov rdi, QWORD [cards + r8 + Card.value]
-		mov QWORD [deck + rsi + Card.value], rdi
-		mov rdi, QWORD [cards + r8 + Card.type]
-		mov QWORD [deck + rsi + Card.type], rdi
-		mov rdi, QWORD [cards + r8 + Card.suit]
-		mov QWORD [deck + rsi + Card.suit], rdi
-		
-		inc rbx
-		jmp .loop
 	.break:
 	mov rsp, rbp
 	pop rbp
 	ret
 
-print_full_cards:
-	; store cards/deck in rdi
-	push rbp
-	mov rbp, rsp
-	sub rsp, 8
+print_member:
+	; rdi = ENUM_PLAYER/DEALER
+	cmp rdi, ENUM_PLAYER
+	je .player
+
+	mov r8, text_dealer_total
+	mov r9, text_dealer_total_len
+	mov r10, [dealer_total]
+	mov r11, text_dealer_hand
+	mov r12, text_dealer_hand_len
+	mov r13, [dealer_hand_start]
+	mov r14, [dealer_hand_end]
+	jmp .print
 	
-	mov rdx, rdi	; cards/deck base
-	xor rbx, rbx	; index
-	.loop:
-		card_offset rcx, rbx
-		mov rax, QWORD [rdx + rcx + Card.value]
-		add rax, '0'
-		mov QWORD [rbp - 8], rax
-		lea rdi, [rbp - 8]
-		mov rsi, 1
-		m_write_call
-		lea rdi, [rdx + rcx + Card.type]
-		mov rsi, 1
-		m_write_call
-		lea rdi, [rdx + rcx + Card.suit]
-		mov rsi, 1
-		m_write_call
+	.player:
+	mov r8, text_player_total
+	mov r9, text_player_total_len
+	mov r10, [player_total]
+	mov r11, text_player_hand
+	mov r12, text_player_hand_len
+	mov r13, [player_hand_start]
+	mov r14, [player_hand_end]
 
-		push rdx
-		push rcx
-		push rax
-		call write_newln
-		pop rax
-		pop rcx
-		pop rdx
-
-		inc rbx
-		cmp rbx, DECK_SIZE
-		jl .loop
-		
-	mov rsp, rbp
-	pop rbp
-	ret
-
-
-print_player_total:
-	mov rdi, text_player_total
-	mov rsi, text_player_total_len
+	.print:
+	; print total
+	mov rdi, r8
+	mov rsi, r9
 	call write
-
-	mov rdi, [player_total]
+	mov rdi, r10
 	call itoa_total_str_buffer	; returns str len in rax
 	lea rdi, [total_str_buffer]
 	mov rsi, rax
 	call write
-	call write_newln
-	ret
-
-; could parametrize 
-print_dealer_total:
-	mov rdi, text_dealer_total
-	mov rsi, text_dealer_total_len
+	call print_newln
+	; print hand
+	mov rdi, r11
+	mov rsi, r12
 	call write
-
-	mov rdi, [dealer_total]
-	call itoa_total_str_buffer	; returns str len in rax
-	lea rdi, [total_str_buffer]
-	mov rsi, rax
-	call write
-	call write_newln
+	mov rdi, cards
+	mov rsi, r13
+	mov rdx, r14
+	call print_n_cards
 	ret
 
 
@@ -634,12 +613,12 @@ itoa_total_str_buffer:
 		inc rax
 		cmp rax, total_str_buffer_len - 1
 		jne .clear_buf_loop
-
 	
 	xor rbx, rbx ; index increment
 	; put lower 64 bits of dividend in rax, upper in rdx
 	mov rax, r8	; dividend
-	; put the string on stack in reverse order then copy to total_str_buffer in the correct order
+	; put the string on stack in reverse order 
+	; then copy to total_str_buffer in the correct order
 	.loop_stack:
 		xor rdx, rdx
 		mov rcx, 10 ; divisor
@@ -689,14 +668,14 @@ print_n_cards:
 	sub rsp, 8
 	
 	mov r15, rdx	; end index (inclusive)
-	mov rdx, rdi	; cards/deck base
+	mov rdx, rdi	; cards base
 	mov rbx, rsi	; start index
 
 	.loop:
 		card_offset rcx, rbx
 		mov rax, [rdx + rcx + Card.value]
 		cmp rax, 9
-		jg .print_two_dig
+		jg .print_two_digits
 		add rax, '0'
 		mov QWORD [rbp - 8], rax
 		lea rdi, [rbp - 8]
@@ -712,7 +691,7 @@ print_n_cards:
 		push rdx
 		push rcx
 		push rax
-		call write_comma_s
+		call print_comma_s
 		pop rax
 		pop rcx
 		pop rdx
@@ -721,13 +700,13 @@ print_n_cards:
 		cmp rbx, r15
 		jle .loop
 
-	call write_newln	
+	call print_newln	
 	
 	mov rsp, rbp
 	pop rbp
 	ret
 
-	.print_two_dig:
+	.print_two_digits:
 		; print 1
 		; subract 10 from rax
 		; if rax == 1, print 1, else print 0
@@ -751,24 +730,82 @@ print_n_cards:
 			jmp .skip_one
 
 
-print_player_hand:
-	mov rdi, text_player_hand
-	mov rsi, text_player_hand_len
+print_stat:
+	push rdx
 	call write
-	
-	mov rdi, deck
-	mov rsi, [player_hand_start]
-	mov rdx, [player_hand_end]
-	call print_n_cards
+	pop rdx
+	mov rdi, rdx
+	call itoa_total_str_buffer
+	lea rdi, [total_str_buffer]
+	mov rsi, rax
+	call write
 	ret
 
-print_dealer_hand:
-	mov rdi, text_dealer_hand
-	mov rsi, text_dealer_hand_len
-	call write
+print_all_stats:
+	mov rdi, text_hand_count
+	mov rsi, text_hand_count_len
+	mov rdx, [hand_count]
+	call print_stat
+	call print_comma_s
+
+	mov rdi, text_wins
+	mov rsi, text_wins_len
+	mov rdx, [win_count]
+	call print_stat
+	call print_comma_s
+
+	mov rdi, text_losses
+	mov rsi, text_losses_len
+	mov rdx, [loss_count]
+	call print_stat
+	call print_comma_s
+
+	mov rdi, text_ties
+	mov rsi, text_ties_len
+	mov rdx, [tie_count]
+	call print_stat
+
+	call print_newln
+	call print_newln
+	ret
+
+
+; debugging function
+print_full_cards:
+	; store cards/cards in rdi
+	push rbp
+	mov rbp, rsp
+	sub rsp, 8
 	
-	mov rdi, deck
-	mov rsi, [dealer_hand_start]
-	mov rdx, [dealer_hand_end]
-	call print_n_cards
+	mov rdx, rdi	; cards/cards base
+	xor rbx, rbx	; index
+	.loop:
+		card_offset rcx, rbx
+		mov rax, QWORD [rdx + rcx + Card.value]
+		add rax, '0'
+		mov QWORD [rbp - 8], rax
+		lea rdi, [rbp - 8]
+		mov rsi, 1
+		m_write_call
+		lea rdi, [rdx + rcx + Card.type]
+		mov rsi, 1
+		m_write_call
+		lea rdi, [rdx + rcx + Card.suit]
+		mov rsi, 1
+		m_write_call
+
+		push rdx
+		push rcx
+		push rax
+		call print_newln
+		pop rax
+		pop rcx
+		pop rdx
+
+		inc rbx
+		cmp rbx, DECK_SIZE
+		jl .loop
+		
+	mov rsp, rbp
+	pop rbp
 	ret
