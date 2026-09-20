@@ -1,4 +1,6 @@
-#include "main.hpp"
+#include <vector>
+
+#include "lexer.hpp"
 
 // all related to the tokenizer
 static bool is_whitespace(char c);
@@ -15,6 +17,8 @@ static std::string scanLexeme(char c);
 static void populateKeywords(std::unordered_map<TokenType, std::string> printmap);
 static bool parseInteger(std::string lexeme);
 static int ctoi(char c);
+void throw_invalid_identifier(int line);
+void throw_invalid_identifier_start(int line);
 
 static void addToken(TokenType type, 
 					 int length, 
@@ -185,7 +189,7 @@ static void scanToken()
 				break;
 			}
 
-			std::cerr << "Unexpected character: " << c << std::endl;
+			throw_error_line(1, line, fmt::format("Unexpected character: {}", c));
 	}
 }
 
@@ -391,4 +395,22 @@ void printTokens()
 	{
 		fmt::print("{}\n", tokenList[i].lexeme);
 	}
+}
+
+
+// TODO: find a way to print where the error was thrown in this file
+// (a C++ exception or something?)
+void throw_invalid_identifier(int line)
+{
+	std::string s = "Invalid identifier symbol on line ";
+	s.append(std::to_string(line));
+	throw_error_line(2, line, s);
+}
+
+
+void throw_invalid_identifier_start(int line)
+{
+	std::string s = "Invalid identifier start symbol on line ";
+	s.append(std::to_string(line));
+	throw_error_line(2, line, s);
 }

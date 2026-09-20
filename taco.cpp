@@ -3,14 +3,17 @@
 
 */
 
-#include "main.hpp"
+#include <cassert>
+#include <vector>
+
+#include "ast.hpp"
+#include "taco.hpp"
 
 static void emit(Instruction* instr);
 static void genDeclaration(DeclarationNode* node, FuncDefNode* func);
 static Operand genExpression(Node *node, FuncDefNode* func);
 static void genReturn(ReturnNode *node, FuncDefNode* func);
 static int newVreg();
-static std::string operandToStr(Operand operand);
 static void genAssignment(AssignmentNode* node, FuncDefNode* func);
 static Label* newLabel(std::string text);
 static void genOr(BinaryOpNode* node, Operand dest, FuncDefNode* func);
@@ -198,6 +201,22 @@ std::string binaryOpToStr(BinaryOp op) {
 		default:
 			// TODO: use a C++ feature to print the function automatically.
 			throw_error(1, "Error in BinaryInstr->toStr: Invalid operator");
+			exit(1);
+	}
+}
+
+std::string operandToStr(Operand operand)
+{
+	switch (operand.kind)
+	{
+		case OperandKind::Immediate:
+			return fmt::format("Immediate({})", operand.val);
+		case OperandKind::Temp:
+			return fmt::format("Temp({}, {})", operand.val, operand.offset);
+		case OperandKind::Variable:
+			return fmt::format("Variable({}, {})", operand.name, operand.offset);
+		default:
+			throw_error(1, "Operand has invalid kind. Hello??");
 			exit(1);
 	}
 }

@@ -1,15 +1,7 @@
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <variant>
-#include <vector>
-#include <unordered_map>
-
-#include "main.hpp"
-
 /*
-g++ main.cpp parser.cpp lexer.cpp sema.cpp taco.cpp codegen.cpp -o main -lfmt && ./main src.c
-	
+	compile with make
+
+	makefile flags:
 	-DLEX to print token list
 	-DAST to print validated AST
 	-DTAC to print TAC IR
@@ -31,6 +23,14 @@ g++ main.cpp parser.cpp lexer.cpp sema.cpp taco.cpp codegen.cpp -o main -lfmt &&
 	TODO: create a testing setup for each part of the compiler, not just codegen
 */
 
+#include <cassert>
+#include <fstream>
+#include <iostream>
+#include <vector>
+
+#include "ast.hpp"
+#include "lexer.hpp"
+#include "taco.hpp"
 
 static std::string preprocess(std::string fileName);
 void lexer(std::string src);
@@ -38,7 +38,8 @@ GodNode *parser();
 GodNode *sema(GodNode *ast);
 std::vector<Instruction*> taco(GodNode *program);
 std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode* ast);
-
+std::string readFile(std::string filename);
+void printTokens();
 
 int main(int argc, char *argv[])
 {
@@ -87,24 +88,6 @@ int main(int argc, char *argv[])
 	fmt::print("Compiled to a.out\n");
 
 	return 0;
-}
-
-
-// TODO: find a way to print where the error was thrown in this file
-// (a C++ exception or something?)
-void throw_invalid_identifier(int line)
-{
-	std::string s = "Invalid identifier symbol on line ";
-	s.append(std::to_string(line));
-	throw_error_line(2, line, s);
-}
-
-
-void throw_invalid_identifier_start(int line)
-{
-	std::string s = "Invalid identifier start symbol on line ";
-	s.append(std::to_string(line));
-	throw_error_line(2, line, s);
 }
 
 // TODO: add yellow and red colors for warnings and errors

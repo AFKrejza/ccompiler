@@ -2,7 +2,11 @@
 	recursive descent parser
 */
 
-#include "main.hpp"
+#include <cassert>
+#include <vector>
+
+#include "ast.hpp"
+#include "lexer.hpp"
 
 extern std::vector<Token> tokenList;
 static int current = 0;

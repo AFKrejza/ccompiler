@@ -1,4 +1,5 @@
 // Contains the type system for the semantic analysis phase
+#pragma once
 
 #include <string>
 

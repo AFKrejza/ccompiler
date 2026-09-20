@@ -12,8 +12,11 @@
 	check that its expression's type is the same as the function it's in
 */
 
-#include "main.hpp"
 #include <type_traits>
+
+#include "ast.hpp"
+#include "error.hpp"
+#include "main.hpp"
 
 static void evalDeclaration(DeclarationNode* node, FuncDefNode* func);
 static Type* evalType(Node *node, FuncDefNode* func);

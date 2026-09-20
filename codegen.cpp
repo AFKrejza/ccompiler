@@ -1,6 +1,14 @@
-#include "main.hpp"
-
+#include <cassert>
 #include <filesystem>
+#include <fmt/core.h>
+#include <fstream>
+#include <vector>
+
+#include "ast.hpp"
+#include "error.hpp"
+#include "main.hpp"
+#include "operators.hpp"
+#include "taco.hpp"
 
 /*
 	Convert TACO IR to assembly.
@@ -9,8 +17,8 @@
 */
 
 static std::string binaryOpToAsm(BinaryOp op);
-static void emit(std::string code);
-static void emitni(std::string code); // no indent
+static void emit(std::string instr);
+static void emitni(std::string instr); // no indent
 static void emitProgramEnd();
 static void emitProgramStart();
 static void emitReturn(ReturnInstr* instr);
