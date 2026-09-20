@@ -1,6 +1,11 @@
 int main()
 {
-	int a;
-	a = 5;
-	return a;
+	if (0)
+		{
+			int a = 5;
+			return a;
+
+		}
+
+	return 0;
 }

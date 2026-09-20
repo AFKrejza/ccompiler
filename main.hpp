@@ -516,17 +516,40 @@ class DeclarationNode : public Node {
 };
 
 
-class IfNode : public StatementNode {
-	Node* expression;
-
-	// compound statement here?
-	// or just an array of StatementNodes?
-};
-
 // class VoidNode : public Node {
 // 	public:
 // 		VoidNode() : Node() {}
 // };
+
+
+class IfNode : public StatementNode {
+	public:
+		Node* expression;
+
+		IfNode(int line, Node* expression)
+		:	StatementNode(line),
+			expression(expression) {}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("If\n");
+			expression->printChildren(indent + 1);
+			printIndentLines(indent + 1);
+			fmt::print(":>\n");
+		}
+
+		void printChildren(int indent) override {
+			print(indent);
+			for (Node* node : body)
+				node->printChildren(indent + 2);
+		}
+
+		std::string typeName() override {
+			return "IfNode";
+		}
+};
+
+
 
 class Instruction {
 	public:
@@ -782,4 +805,3 @@ class JumpIfInstr : public JumpInstr {
 			return "JumpIfInstr";
 		}
 };
-

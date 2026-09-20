@@ -15,6 +15,8 @@ static void genAssignment(AssignmentNode* node, FuncDefNode* func);
 static Label* newLabel(std::string text);
 static void genOr(BinaryOpNode* node, Operand dest, FuncDefNode* func);
 static void genAnd(BinaryOpNode* node, Operand dest, FuncDefNode* func);
+static void genStatements(std::vector<Node*> body, FuncDefNode* func);
+static void genIf(IfNode* node, FuncDefNode* func);
 
 static int current = 0; // temp register
 
@@ -27,29 +29,13 @@ std::vector<Instruction*> taco(GodNode *program)
 	auto* main = dynamic_cast<FuncDefNode*>(program->body[0]);
 	assert(main->name == "main");
 
-	for (Node* node : main->body) {
-		if (auto* ret = dynamic_cast<ReturnNode*>(node)) {
-			genReturn(ret, main);
-		}
-		else if (auto* decl = dynamic_cast<DeclarationNode*>(node)) {
-			genDeclaration(decl, main);
-		}
-		else if (auto* assign = dynamic_cast<AssignmentNode*>(node)) {
-			genAssignment(assign, main);
-		}
-		else {
-			throw_error_line(1, 
-							 node->line, 
-							 fmt::format("Taco no rule for {}\n", node->typeName()));
-		}
-	}
-
 	// this will be moved to genFunction() later
 	// for 16-byte aligning each stack frame
 	for (Node* node : program->body)
 	{
 		if (auto* func = dynamic_cast<FuncDefNode*>(node))
 		{
+			genStatements(func->body, func);
 			int pad = func->frameSize % 16;
 			func->frameSize = func->frameSize + 16 - (pad ? pad : 16);
 		}
@@ -57,6 +43,29 @@ std::vector<Instruction*> taco(GodNode *program)
 
 	fmt::print("IR generated\n");
 	return ir;
+}
+
+static void genStatements(std::vector<Node*> body, FuncDefNode* func)
+{
+	for (Node* node : body) {
+		if (auto* ret = dynamic_cast<ReturnNode*>(node)) {
+			genReturn(ret, func);
+		}
+		else if (auto* decl = dynamic_cast<DeclarationNode*>(node)) {
+			genDeclaration(decl, func);
+		}
+		else if (auto* assign = dynamic_cast<AssignmentNode*>(node)) {
+			genAssignment(assign, func);
+		}
+		else if (auto* ifs = dynamic_cast<IfNode*>(node)) {
+			genIf(ifs, func);
+		}
+		else {
+			throw_error_line(1, 
+							 node->line, 
+							 fmt::format("Taco no rule for {}\n", node->typeName()));
+		}
+	}
 }
 
 static void emit(Instruction* instr)
@@ -268,4 +277,14 @@ static void genAnd(BinaryOpNode* node, Operand dest, FuncDefNode* func)
 	emit(skip);
 	emit(new AssignmentInstr(dest, Operand::Immediate(0)));
 	emit(cont);
+}
+
+static void genIf(IfNode* node, FuncDefNode* func)
+{
+	Label* skip = newLabel(".ifisfalse");
+	Operand expr = genExpression(node->expression, func);
+
+	emit(new JumpIfFalseInstr(skip, expr));
+	genStatements(node->body, func);
+	emit(skip);
 }

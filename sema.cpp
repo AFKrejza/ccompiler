@@ -19,6 +19,8 @@ static void evalDeclaration(DeclarationNode* node, FuncDefNode* func);
 static Type* evalType(Node *node, FuncDefNode* func);
 static bool typesEqual(Type *first, Type *second);
 static void evalAssignment(AssignmentNode* node, FuncDefNode* func);
+static void evalIf(IfNode* node, FuncDefNode* func);
+static void evalStatements(StatementNode* block, FuncDefNode* func);
 
 GodNode *sema(GodNode *program)
 {
@@ -32,31 +34,50 @@ GodNode *sema(GodNode *program)
 	// add global vars
 
 	main->parent = program;
-	for (Node *node : main->body)
+
+	for (Node *node : program->body)
+	{
+		if (auto* func = dynamic_cast<FuncDefNode*>(node))
+		{
+			evalStatements(func, func);
+		}
+	}
+
+	fmt::print("Semantic analysis completed\n");
+	return program;
+}
+
+static void evalStatements(StatementNode* block, FuncDefNode* func)
+{
+	for (Node *node : block->body)
 	{
 		if (auto* retNode = dynamic_cast<ReturnNode*>(node))
 		{
-			Type* exprType = evalType(retNode->expression, main);
+			Type* exprType = evalType(retNode->expression, func);
 			
-			if (!typesEqual(main->returnType, exprType))
+			if (!typesEqual(func->returnType, exprType))
 				throw_error_line(1, node->line, "Invalid return type");
 			
 			retNode->expression->type = exprType;
 		}
 		else if (auto* declNode = dynamic_cast<DeclarationNode*>(node))
 		{
-			evalDeclaration(declNode, main);
+			evalDeclaration(declNode, func);
 		}
 		else if (auto* asg = dynamic_cast<AssignmentNode*>(node))
 		{
 			// check that lvalues exist
-			evalAssignment(asg, main);
+			evalAssignment(asg, func);
 
 		}
+		else if (auto* ifs = dynamic_cast<IfNode*>(node))
+		{
+			evalIf(ifs, func);
+		}
+		else {
+			throw_error_line(1, node->line, fmt::format("No rule for node type {}", node->typeName()));
+		}
 	}
-	
-	fmt::print("Semantic analysis completed\n");
-	return program;
 }
 
 // takes 2 Types and walks through them in lockstep. 
@@ -171,4 +192,9 @@ static void evalAssignment(AssignmentNode* node, FuncDefNode* func)
 		throw_error_line(1, node->line, "evalAssignment: Unequal types");
 	}
 
+}
+
+static void evalIf(IfNode* node, FuncDefNode* func)
+{
+	evalStatements(node, func);
 }

@@ -23,10 +23,12 @@ static Node* parseUnary();
 static Node *parseFactor();
 static Node *parseFuncDef(GodNode* parent);
 static std::vector<Parameter> parseParamList();
-static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode);
+static std::vector<Node*> parseStatements(bool isCompound, FuncDefNode *func);
 static Type *parseType();
 static Node* parseDeclaration();
 static AssignmentNode* parseAssignment();
+
+static Node* parseIf(FuncDefNode* func);
 
 GodNode *parser()
 {
@@ -252,7 +254,7 @@ static Node *parseFuncDef(GodNode* parent)
 	assert(tokenList.at(current).tokenType == CLOSED_PARENTHESES);
 	advance();
 
-	funcNode->body = parseFuncBody(funcNode);
+	funcNode->body = parseStatements(true, funcNode);
 	return funcNode;
 }
 
@@ -280,14 +282,22 @@ static std::vector<Parameter> parseParamList()
 	return paramList;
 }
 
-static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode)
+static std::vector<Node*> parseStatements(bool isCompound, FuncDefNode *func)
 {
-	std::vector<Node*> body;
-	advance();
+	if (isCompound) {
+		assert(token().tokenType == OPEN_CURLY_BRACE);
+		advance();
+	}
 
-	while (token().tokenType != END_OF_FILE &&
-		   token().tokenType != CLOSED_CURLY_BRACE)
+	std::vector<Node*> body;
+
+	while (token().tokenType != END_OF_FILE)
 	{
+		if (isCompound && token().tokenType == CLOSED_CURLY_BRACE) {
+			advance();
+			return body;
+		}
+
 		if (token().tokenType == RETURN)
 		{
 			ReturnNode *retNode = new ReturnNode(token().line);
@@ -311,12 +321,19 @@ static std::vector<Node*> parseFuncBody(FuncDefNode *funcNode)
 			assert(token().tokenType == SEMICOLON);
 			advance();
 		}
+		else if (token().tokenType == IF)
+		{
+			body.push_back(parseIf(func));
+		}
 		else {
 			throw_error_line(1, 
 							 token().line, 
-							 fmt::format("parseFuncBody failure to parse {}", 
-								token().tokenTypeToStr(token().tokenType)));
+							 fmt::format("parseStatements failure to parse {}", 
+							 token().tokenTypeToStr(token().tokenType)));
 		}
+
+		if (!isCompound)
+			return body;
 	}
 	return body;
 }
@@ -403,4 +420,30 @@ std::string unaryOpToStr(UnaryOp op)
 				unaryOpToStr(op)));
 			exit(1);
 	}
+}
+
+static Node* parseIf(FuncDefNode* func)
+{
+	int line = token().line;
+	advance();
+	assert(token().tokenType == OPEN_PARENTHESES);
+	advance();
+	Node* expr = parseExpression();
+	assert(token().tokenType == CLOSED_PARENTHESES);
+	advance();
+
+	std::vector<Node*> statements;
+	if (token().tokenType == OPEN_CURLY_BRACE)
+	{
+		// parse compound statement
+		statements = parseStatements(true, func);
+	}
+	else {
+		// parse one statement
+		statements = parseStatements(false, func);
+	}
+
+	auto* ifNode = new IfNode(line, expr);
+	ifNode->body = statements;
+	return ifNode;
 }
