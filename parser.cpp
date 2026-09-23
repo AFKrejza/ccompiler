@@ -33,6 +33,7 @@ static Node* parseDeclaration();
 static AssignmentNode* parseAssignment();
 
 static Node* parseIf(FuncDefNode* func);
+static ElseNode* parseElse(FuncDefNode* func);
 
 GodNode *parser()
 {
@@ -203,15 +204,18 @@ static Node* parseUnary()
 {
 	Node* root;
 
-	if (token().tokenType == MINUS)
+	switch (token().tokenType)
 	{
-		UnaryOpNode *unop = new UnaryOpNode(token().line, token().tokenType, NULL);
-		advance();
-		unop->expression = parseFactor();
-		root = unop;
-	}
-	else {
-		root = parseFactor();
+		UnaryOpNode *unop;
+		case MINUS:
+		case LOGICAL_NOT:
+			unop = new UnaryOpNode(token().line, token().tokenType, NULL);
+			advance();
+			unop->expression = parseFactor();
+			root = unop;
+			break;
+		default:
+			root = parseFactor();
 	}
 	return root;
 }
@@ -329,6 +333,10 @@ static std::vector<Node*> parseStatements(bool isCompound, FuncDefNode *func)
 		{
 			body.push_back(parseIf(func));
 		}
+		else if (token().tokenType == ELSE)
+		{
+			throw_error_line(1, token().line, "Else ain't got no preceding if");
+		}
 		else {
 			throw_error_line(1, 
 							 token().line, 
@@ -406,6 +414,8 @@ UnaryOp TokenTypeToUnaryOp(TokenType op) {
 	{
 		case MINUS:
 			return UnaryOp::NEGATE;
+		case LOGICAL_NOT:
+			return UnaryOp::LOGICAL_NOT;
 		default:
 			throw_error(1, fmt::format("TokenTypeToUnaryOp: no rule for token {}",
 				Token::tokenTypeToStr(op)));
@@ -419,11 +429,28 @@ std::string unaryOpToStr(UnaryOp op)
 	{
 		case UnaryOp::NEGATE:
 			return "NEGATE";
+		case UnaryOp::LOGICAL_NOT:
+			return "LOGICAL_NOT";
 		default:
 			throw_error(1, fmt::format("Error in binaryOpToAsm: Missing op translation for {}",
 				unaryOpToStr(op)));
 			exit(1);
 	}
+}
+
+static std::vector<Node*> parseConditionalStatements(FuncDefNode* func)
+{
+	std::vector<Node*> statements;
+	if (token().tokenType == OPEN_CURLY_BRACE)
+	{
+		// parse compound statement
+		statements = parseStatements(true, func);
+	}
+	else {
+		// parse one statement
+		statements = parseStatements(false, func);
+	}
+	return statements;
 }
 
 static Node* parseIf(FuncDefNode* func)
@@ -436,18 +463,22 @@ static Node* parseIf(FuncDefNode* func)
 	assert(token().tokenType == CLOSED_PARENTHESES);
 	advance();
 
-	std::vector<Node*> statements;
-	if (token().tokenType == OPEN_CURLY_BRACE)
+	auto* ifNode = new IfNode(line, expr);
+	ifNode->body = parseConditionalStatements(func);
+
+	if (token().tokenType == ELSE)
 	{
-		// parse compound statement
-		statements = parseStatements(true, func);
-	}
-	else {
-		// parse one statement
-		statements = parseStatements(false, func);
+		ifNode->elseBranch = parseElse(func);
 	}
 
-	auto* ifNode = new IfNode(line, expr);
-	ifNode->body = statements;
 	return ifNode;
+}
+
+static ElseNode* parseElse(FuncDefNode* func)
+{
+	auto* elseNode = new ElseNode(token().line);
+	advance();
+	elseNode->body = parseConditionalStatements(func);
+
+	return elseNode;
 }

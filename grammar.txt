@@ -20,8 +20,11 @@ Terminals: type, IDENTIFIER, INTEGER
 <function>		= "int" IDENTIFIER "(" <paramList> ")" <functionBody>
 <paramList>		= [ <parameter> { "," <parameter> } ]
 <parameter>		= "int" IDENTIFIER
-<functionBody>	=  "{" { <statement> } "}"
-<statement>		= <ret> | <declaration> | <assignment>
+<functionBody>	=  <compound>
+<statement>		= <ret> | <declaration> | <assignment> | <if> | <compound>
+<compound>		= "{" { <statement> } "}"
+<if>			= "if" "(" <expression> ")" <statement> [ <else> ] // else resolves to nearest if
+<else>			= "else" <statement>
 <ret>			= "return" <expression>
 <declaration>	= "int" IDENTIFIER [ "=" <expression> ]
 <expression>	= <logicalOr>
@@ -32,7 +35,7 @@ Terminals: type, IDENTIFIER, INTEGER
 <additive>		= <term>		{ ("+" | "-") <term> }
 <term>			= <unary>		{ "*" <unary> }
 <unary>			= <unop> <unary> | <factor>
-<unop>			= "-"
+<unop>			= "-" | "!"		// TODO: add ~ +
 <factor>		= INTEGER | IDENTIFIER | "(" <expression> ")"
 
 

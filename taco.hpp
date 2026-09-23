@@ -154,14 +154,6 @@ class Label : public Instruction {
 		}
 };
 
-// enum class JumpCond {
-// 	EQUAL,
-// 	ZERO,
-// 	NONZERO,
-// };
-
-// i could do the codegen similarly to emitBinaryInstr
-
 class JumpInstr : public Instruction {
 	public:
 		Label* label;
@@ -188,7 +180,7 @@ class JumpIfTrueInstr : public JumpInstr {
 
 		void print(int indent) override {
 			printIndentLines(indent);
-			fmt::print("JumpIfTrue {} {}\n", operand.name, label->name);
+			fmt::print("JumpIfTrue {} {}\n", operandToStr(operand), label->name);
 		}
 
 		std::string typeName() override {
@@ -206,7 +198,7 @@ class JumpIfFalseInstr : public JumpInstr {
 
 		void print(int indent) override {
 			printIndentLines(indent);
-			fmt::print("JumpIfFalse {} {}\n", operand.name, label->name);
+			fmt::print("JumpIfFalse {} {}\n", operandToStr(operand), label->name);
 		}
 
 		std::string typeName() override {

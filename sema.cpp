@@ -12,17 +12,20 @@
 	check that its expression's type is the same as the function it's in
 */
 
+#include <algorithm>
+#include <iterator>
 #include <type_traits>
 
 #include "ast.hpp"
 #include "error.hpp"
-#include "main.hpp"
+#include "utils.hpp"
 
 static void evalDeclaration(DeclarationNode* node, FuncDefNode* func);
 static Type* evalType(Node *node, FuncDefNode* func);
 static bool typesEqual(Type *first, Type *second);
 static void evalAssignment(AssignmentNode* node, FuncDefNode* func);
 static void evalIf(IfNode* node, FuncDefNode* func);
+static void evalElse(StatementNode* node, FuncDefNode* func, int index);
 static void evalStatements(StatementNode* block, FuncDefNode* func);
 
 GodNode *sema(GodNode *program)
@@ -52,33 +55,36 @@ GodNode *sema(GodNode *program)
 
 static void evalStatements(StatementNode* block, FuncDefNode* func)
 {
-	for (Node *node : block->body)
+	for (int i = 0; i < block->body.size(); i++)
 	{
-		if (auto* retNode = dynamic_cast<ReturnNode*>(node))
+		if (auto* retNode = dynamic_cast<ReturnNode*>(block->body[i]))
 		{
 			Type* exprType = evalType(retNode->expression, func);
 			
 			if (!typesEqual(func->returnType, exprType))
-				throw_error_line(1, node->line, "Invalid return type");
+				throw_error_line(1, block->body[i]->line, "Invalid return type");
 			
 			retNode->expression->type = exprType;
 		}
-		else if (auto* declNode = dynamic_cast<DeclarationNode*>(node))
+		else if (auto* declNode = dynamic_cast<DeclarationNode*>(block->body[i]))
 		{
 			evalDeclaration(declNode, func);
 		}
-		else if (auto* asg = dynamic_cast<AssignmentNode*>(node))
+		else if (auto* asg = dynamic_cast<AssignmentNode*>(block->body[i]))
 		{
 			// check that lvalues exist
 			evalAssignment(asg, func);
-
 		}
-		else if (auto* ifs = dynamic_cast<IfNode*>(node))
+		else if (auto* ifs = dynamic_cast<IfNode*>(block->body[i]))
 		{
 			evalIf(ifs, func);
 		}
+		else if (auto* elses = dynamic_cast<ElseNode*>(block->body[i]))
+		{
+			evalElse(elses, func, i);
+		}
 		else {
-			throw_error_line(1, node->line, fmt::format("No rule for node type {}", node->typeName()));
+			throw_error_line(1, block->body[i]->line, fmt::format("No rule for node type {}", block->body[i]->typeName()));
 		}
 	}
 }
@@ -189,8 +195,6 @@ static void evalAssignment(AssignmentNode* node, FuncDefNode* func)
 	Attrs var = func->getSymbol(node->name);
 	node->expression->type = evalType(node->expression, func);
 
-	fmt::print("node: {}\nexpression: {}\n", var.type->typeName(), node->expression->typeName());
-
 	if (!typesEqual(var.type, node->expression->type)) {
 		throw_error_line(1, node->line, "evalAssignment: Unequal types");
 	}
@@ -199,5 +203,15 @@ static void evalAssignment(AssignmentNode* node, FuncDefNode* func)
 
 static void evalIf(IfNode* node, FuncDefNode* func)
 {
+	evalStatements(node, func);
+}
+
+static void evalElse(StatementNode* node, FuncDefNode* func, int index)
+{
+	fmt::print("FUCK\n");
+	if (index == 0 || !dynamic_cast<IfNode*>(func->body.at(index -1)))
+	{
+		throw_error_line(1, node->line, "Missing if statement before else");
+	}
 	evalStatements(node, func);
 }

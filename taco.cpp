@@ -8,6 +8,7 @@
 
 #include "ast.hpp"
 #include "taco.hpp"
+#include "utils.hpp"
 
 static void emit(Instruction* instr);
 static void genDeclaration(DeclarationNode* node, FuncDefNode* func);
@@ -15,7 +16,7 @@ static Operand genExpression(Node *node, FuncDefNode* func);
 static void genReturn(ReturnNode *node, FuncDefNode* func);
 static int newVreg();
 static void genAssignment(AssignmentNode* node, FuncDefNode* func);
-static Label* newLabel(std::string text);
+static Label* newLocalLabel(std::string text);
 static void genOr(BinaryOpNode* node, Operand dest, FuncDefNode* func);
 static void genAnd(BinaryOpNode* node, Operand dest, FuncDefNode* func);
 static void genStatements(std::vector<Node*> body, FuncDefNode* func);
@@ -32,8 +33,6 @@ std::vector<Instruction*> taco(GodNode *program)
 	auto* main = dynamic_cast<FuncDefNode*>(program->body[0]);
 	assert(main->name == "main");
 
-	// this will be moved to genFunction() later
-	// for 16-byte aligning each stack frame
 	for (Node* node : program->body)
 	{
 		if (auto* func = dynamic_cast<FuncDefNode*>(node))
@@ -50,23 +49,23 @@ std::vector<Instruction*> taco(GodNode *program)
 
 static void genStatements(std::vector<Node*> body, FuncDefNode* func)
 {
-	for (Node* node : body) {
-		if (auto* ret = dynamic_cast<ReturnNode*>(node)) {
+	for (int i = 0; i < body.size(); i++) {
+		if (auto* ret = dynamic_cast<ReturnNode*>(body[i])) {
 			genReturn(ret, func);
 		}
-		else if (auto* decl = dynamic_cast<DeclarationNode*>(node)) {
+		else if (auto* decl = dynamic_cast<DeclarationNode*>(body[i])) {
 			genDeclaration(decl, func);
 		}
-		else if (auto* assign = dynamic_cast<AssignmentNode*>(node)) {
+		else if (auto* assign = dynamic_cast<AssignmentNode*>(body[i])) {
 			genAssignment(assign, func);
 		}
-		else if (auto* ifs = dynamic_cast<IfNode*>(node)) {
+		else if (auto* ifs = dynamic_cast<IfNode*>(body[i])) {
 			genIf(ifs, func);
 		}
 		else {
 			throw_error_line(1, 
-							 node->line, 
-							 fmt::format("Taco no rule for {}\n", node->typeName()));
+							 body[i]->line, 
+							 fmt::format("Taco: no rule for {}", body[i]->typeName()));
 		}
 	}
 }
@@ -131,7 +130,6 @@ static void genReturn(ReturnNode *node, FuncDefNode* func)
 				break;
 		}
 	}
-	// Operand operand = genExpression(node->expression, func);
 	emit(new ReturnInstr(dest));
 }
 
@@ -227,13 +225,12 @@ static void genDeclaration(DeclarationNode* node, FuncDefNode* func)
 	genAssignment(node->assignment, func);
 }
 
-// label generator: increment as usual,
-// but also include .jump_true_7 for example
-// so it'll just append the number which guarantees
-// unique labels AS LONG AS labels never contain numbers. !!!
-static Label* newLabel(std::string text)
+static Label* newLocalLabel(std::string text)
 {
-	return new Label(text.append(std::to_string(++labelCount)));
+	for (char c : text) {
+		if (isNumber(c)) throw_error(1, fmt::format("Labels cannot contain numbers!"));
+	}
+	return new Label(std::string{".L"}.append(text.append(std::to_string(++labelCount))));
 }
 
 static void genAssignment(AssignmentNode* node, FuncDefNode* func)
@@ -264,9 +261,9 @@ static void genAssignment(AssignmentNode* node, FuncDefNode* func)
 
 static void genOr(BinaryOpNode* node, Operand dest, FuncDefNode* func)
 {
-	Label* ifTrue = newLabel(".iftrue");
-	Label* ifFalse = newLabel(".iffalse");
-	Label* cont = newLabel(".cont");
+	Label* ifTrue = newLocalLabel(".iftrue");
+	Label* ifFalse = newLocalLabel(".iffalse");
+	Label* cont = newLocalLabel(".cont");
 
 	Operand left = genExpression(node->left, func);
 	Operand right = genExpression(node->right, func);
@@ -283,8 +280,8 @@ static void genOr(BinaryOpNode* node, Operand dest, FuncDefNode* func)
 
 static void genAnd(BinaryOpNode* node, Operand dest, FuncDefNode* func)
 {
-	Label* skip = newLabel(".skip");
-	Label* cont = newLabel(".cont");
+	Label* skip = newLocalLabel(".skip");
+	Label* cont = newLocalLabel(".cont");
 
 	Operand left = genExpression(node->left, func);
 	Operand right = genExpression(node->right, func);
@@ -300,10 +297,19 @@ static void genAnd(BinaryOpNode* node, Operand dest, FuncDefNode* func)
 
 static void genIf(IfNode* node, FuncDefNode* func)
 {
-	Label* skip = newLabel(".ifisfalse");
+	Label* skip;
 	Operand expr = genExpression(node->expression, func);
+
+	if (node->elseBranch) {
+		skip = newLocalLabel(".else");
+	}
+	else
+		skip = newLocalLabel(".cont");
 
 	emit(new JumpIfFalseInstr(skip, expr));
 	genStatements(node->body, func);
 	emit(skip);
+
+	if (node->elseBranch)
+		genStatements(node->elseBranch->body, func);
 }

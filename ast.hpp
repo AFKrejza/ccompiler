@@ -5,9 +5,9 @@
 #include <vector>
 
 #include "error.hpp"
-#include "main.hpp"
 #include "operators.hpp"
 #include "type.hpp"
+#include "utils.hpp"
 
 class Node {
 	public:
@@ -375,10 +375,33 @@ class DeclarationNode : public Node {
 // 		VoidNode() : Node() {}
 // };
 
+class ElseNode : public StatementNode {
+	public:		
+		ElseNode(int line) : StatementNode(line) {}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("Else\n");
+			printIndentLines(indent + 1);
+			fmt::print(":>\n");
+		}
+
+		void printChildren(int indent) override {
+			print(indent);
+			for (Node* node : body)
+				node->printChildren(indent + 2);
+		}
+
+		std::string typeName() override {
+			return "ElseNode";
+		}
+};
+
 
 class IfNode : public StatementNode {
 	public:
 		Node* expression;
+		ElseNode* elseBranch = NULL;
 
 		IfNode(int line, Node* expression)
 		:	StatementNode(line),
@@ -396,10 +419,11 @@ class IfNode : public StatementNode {
 			print(indent);
 			for (Node* node : body)
 				node->printChildren(indent + 2);
+			if (elseBranch)
+				elseBranch->printChildren(indent);
 		}
 
 		std::string typeName() override {
 			return "IfNode";
 		}
 };
-

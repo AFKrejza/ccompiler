@@ -6,9 +6,9 @@
 
 #include "ast.hpp"
 #include "error.hpp"
-#include "main.hpp"
 #include "operators.hpp"
 #include "taco.hpp"
+#include "utils.hpp"
 
 /*
 	Convert TACO IR to assembly.
@@ -88,7 +88,7 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode*
 	emitProgramEnd();
 	output.close();
 
-	fmt::print("Assembly generated in {}\n", outputFilename);
+	fmt::print("\nAssembly generated in {}", outputFilename);
 
 	// assemble & link
 	int resp = system("gcc out.s");
@@ -118,9 +118,6 @@ static void emitProgramEnd()
 	std::string str = "\n.section .note.GNU-stack,\"\",@progbits";
 	emitni(str);
 }
-
-// contains each vreg and its offset
-// static std::unordered_map<int, int> vregMap;
 
 static void emitReturn(ReturnInstr* instr)
 {
@@ -272,13 +269,23 @@ static void emitJump(JumpInstr* instr)
 static void emitUnaryInstr(UnaryInstr* instr)
 {
 	assert(instr->dest.kind != OperandKind::Immediate);
-	if (instr->op == UnaryOp::NEGATE)
+
+	switch (instr->op)
 	{
-		emit(fmt::format("mov r10d, {}", operandText(instr->src)));
-		emit("neg r10d");
-		emit(fmt::format("mov {}, r10d", operandText(instr->dest)));
+		case UnaryOp::NEGATE:
+			emit(fmt::format("mov r10d, {}", operandText(instr->src)));
+			emit("neg r10d");
+			emit(fmt::format("mov {}, r10d", operandText(instr->dest)));
+			break;
+		case UnaryOp::LOGICAL_NOT:
+			emit(fmt::format("mov r10d, {}", operandText(instr->src)));
+			emit("cmp r10d, 0");
+			emit("sete r10b");
+			emit("movzx r10d, r10b");
+			emit(fmt::format("mov {}, r10d", operandText(instr->dest)));
+			break;
+		default:
+			throw_error(1, "emitUnaryInstr: invalid Unary Instruction");
 	}
-	else {
-		throw_error(1, "emitUnaryInstr: invalid Unary Instruction");
-	}
+	
 }

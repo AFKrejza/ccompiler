@@ -16,7 +16,8 @@ enum class BinaryOp {
 };
 
 enum class UnaryOp {
-	NEGATE
+	NEGATE,
+	LOGICAL_NOT
 };
 
 enum TokenType {
@@ -52,7 +53,7 @@ enum TokenType {
 	STRING_LITERAL, 
 	INTEGER,
 	IF,
-	ELSE, 
+	ELSE,
 	RETURN,
 	END_OF_FILE,
 };

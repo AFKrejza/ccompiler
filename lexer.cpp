@@ -1,6 +1,7 @@
 #include <vector>
 
 #include "lexer.hpp"
+#include "utils.hpp"
 
 // all related to the tokenizer
 static bool is_whitespace(char c);
@@ -8,12 +9,11 @@ static char peek();
 static char advance();
 static bool parse_identifier(std::string lexeme);
 static void parse_string();
-static bool isnum(char c);
 static bool isAtEnd();
 static void scanToken();
 static bool is_alnum_underscore(char c);
 static bool is_identifier_start(char c);
-static std::string scanLexeme(char c);
+static std::string scanLexeme();
 static void populateKeywords(std::unordered_map<TokenType, std::string> printmap);
 static bool parseInteger(std::string lexeme);
 static int ctoi(char c);
@@ -172,7 +172,7 @@ static void scanToken()
 		default:
 			// now it's more than a 1-character token, so parse it FIRST, THEN match
 			int start = current;
-			std::string lexeme = scanLexeme(c);
+			std::string lexeme = scanLexeme();
 
 			TokenType type;
 			auto it = keywords.find(lexeme);
@@ -180,7 +180,7 @@ static void scanToken()
 				type = it->second;
 				addToken(type, current - start, lexeme);
 				break;
-			} else if (isnum(lexeme[0])) {
+			} else if (isNumber(lexeme[0])) {
 				parseInteger(lexeme);
 				break;
 			}
@@ -262,7 +262,7 @@ static bool parse_identifier(std::string lexeme)
 }
 
 
-static bool isnum(char c)
+bool isNumber(char c)
 {
 	if (c <= '9' && c >= '0')
 		return true;
@@ -332,7 +332,7 @@ static bool is_identifier_start(char c)
 
 static bool is_alnum_underscore(char c)
 {
-	if (isupper(c) || islower(c) || c == '_' || isnum(c))
+	if (isupper(c) || islower(c) || c == '_' || isNumber(c))
 	{
 		return true;
 	}
@@ -340,7 +340,7 @@ static bool is_alnum_underscore(char c)
 }
 
 
-static std::string scanLexeme(char c)
+static std::string scanLexeme()
 {
 	std::string lexeme;
 	int start = current - 1;
@@ -365,7 +365,7 @@ static bool parseInteger(std::string lexeme)
 	int len = lexeme.length();
 	for (int i = 0; i < len; i++)
 	{
-		if (!isnum(lexeme[i]))
+		if (!isNumber(lexeme[i]))
 		{
 			return false;
 		}

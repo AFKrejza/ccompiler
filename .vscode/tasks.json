@@ -7,7 +7,6 @@
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
-                "-DDEBUG",
                 "main.cpp",
                 "parser.cpp",
                 "lexer.cpp",
