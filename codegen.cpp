@@ -91,7 +91,7 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode*
 	fmt::print("\nAssembly generated in {}", outputFilename);
 
 	// assemble & link
-	int resp = system("gcc out.s");
+	int resp = system("gcc -g out.s");
 	if (resp != 0) throw_error(resp, "Failure in gcc assembling");
 	
 	return outputFilename;
@@ -183,6 +183,10 @@ static void emitBinaryInstr(BinaryInstr* instr)
 			emit(fmt::format("movzx r10d, r10b"));
 			emit(fmt::format("mov {}, r10d", dest));
 			break;
+		case BinaryOp::LOGICAL_AND:
+		case BinaryOp::LOGICAL_OR:
+			break;
+		case BinaryOp::DIV:
 		default:
 			throw_error(1, fmt::format("emitBinaryInstr: No rule for {}",
 									   binaryOpToStr(instr->op)));
@@ -211,6 +215,9 @@ static std::string binaryOpToAsm(BinaryOp op)
 			return "setne";
 		case BinaryOp::EQUAL_TO:
 			return "sete";
+		case BinaryOp::DIV:
+		case BinaryOp::LOGICAL_AND:
+		case BinaryOp::LOGICAL_OR:
 		default:
 			throw_error(1, "Error in binaryOpToAsm: Missing op translation");
 			exit(1);
@@ -257,7 +264,7 @@ static void emitJumpIfFalseInstr(JumpIfFalseInstr* instr)
 static void emitLabel(Label* instr)
 {
 	emit("");
-	emit(instr->name.append(":"));
+	emit(instr->name);
 }
 
 static void emitJump(JumpInstr* instr)

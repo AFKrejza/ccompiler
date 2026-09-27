@@ -1,15 +1,8 @@
 /*
 	Semantic analysis phase to validate the structure of the program
+	(types, variable scope, break/continue in a loop, )
 
-	Just does basic type checking
-
-	Returns a fully validated AST to the codegen stage
-
-	Rules for return type int:
-		Each term must be an int or be promotable to an int (char, short).
-
-	walk the ast and for each return node
-	check that its expression's type is the same as the function it's in
+	Returns a fully validated AST
 */
 
 #include <algorithm>
@@ -20,13 +13,18 @@
 #include "error.hpp"
 #include "utils.hpp"
 
-static void evalDeclaration(DeclarationNode* node, FuncDefNode* func);
-static Type* evalType(Node *node, FuncDefNode* func);
+static void evalDeclaration(DeclarationNode* node, ScopeNode* parent);
+static Type* evalType(Node *node, ScopeNode* parent);
 static bool typesEqual(Type *first, Type *second);
-static void evalAssignment(AssignmentNode* node, FuncDefNode* func);
-static void evalIf(IfNode* node, FuncDefNode* func);
-static void evalElse(StatementNode* node, FuncDefNode* func, int index);
-static void evalStatements(StatementNode* block, FuncDefNode* func);
+static void evalAssignment(AssignmentNode* node, ScopeNode* parent);
+static void evalReturn(ReturnNode* node, ScopeNode* parent);
+static void evalIf(IfNode* node, ScopeNode* parent);
+static void evalElse(StatementNode* node, ScopeNode* parent, int index);
+static void evalStatements(StatementNode* block, ScopeNode* parent);
+static void evalLoop(LoopNode* node);
+static void evalBreak(BreakNode* node);
+static void evalContinue(ContinueNode* node);
+static bool evalExpression(Node* expr, ScopeNode* parent);
 
 GodNode *sema(GodNode *program)
 {
@@ -53,38 +51,57 @@ GodNode *sema(GodNode *program)
 	return program;
 }
 
-static void evalStatements(StatementNode* block, FuncDefNode* func)
+static void evalStatements(StatementNode* block, ScopeNode* parent)
 {
-	for (int i = 0; i < block->body.size(); i++)
+	for (size_t i = 0; i < block->body.size(); i++)
 	{
 		if (auto* retNode = dynamic_cast<ReturnNode*>(block->body[i]))
 		{
-			Type* exprType = evalType(retNode->expression, func);
-			
-			if (!typesEqual(func->returnType, exprType))
-				throw_error_line(1, block->body[i]->line, "Invalid return type");
-			
-			retNode->expression->type = exprType;
+			evalReturn(retNode, parent);
 		}
+		// TODO: declaration and assignment shouldn't really be here cuz they're
+		// not statements.
 		else if (auto* declNode = dynamic_cast<DeclarationNode*>(block->body[i]))
 		{
-			evalDeclaration(declNode, func);
+			evalDeclaration(declNode, parent);
 		}
 		else if (auto* asg = dynamic_cast<AssignmentNode*>(block->body[i]))
 		{
 			// check that lvalues exist
-			evalAssignment(asg, func);
+			evalAssignment(asg, parent);
 		}
 		else if (auto* ifs = dynamic_cast<IfNode*>(block->body[i]))
 		{
-			evalIf(ifs, func);
+			evalIf(ifs, parent);
 		}
 		else if (auto* elses = dynamic_cast<ElseNode*>(block->body[i]))
 		{
-			evalElse(elses, func, i);
+			evalElse(elses, parent, i);
+		}
+		else if (auto* whilel = dynamic_cast<WhileNode*>(block->body[i]))
+		{
+			evalLoop(whilel);
+		}
+		else if (auto* doer = dynamic_cast<DoWhileNode*>(block->body[i]))
+		{
+			evalLoop(doer);
+		}
+		else if (auto* forl = dynamic_cast<ForNode*>(block->body[i]))
+		{
+			evalLoop(forl);
+		}
+		else if (auto* breaker = dynamic_cast<BreakNode*>(block->body[i]))
+		{
+			evalBreak(breaker);
+		}
+		else if (auto* conch = dynamic_cast<ContinueNode*>(block->body[i]))
+		{
+			evalContinue(conch);
 		}
 		else {
-			throw_error_line(1, block->body[i]->line, fmt::format("No rule for node type {}", block->body[i]->typeName()));
+			throw_error_line(1, 
+							 block->body[i]->line, 
+							 fmt::format("No rule for node type {}", block->body[i]->typeName()));
 		}
 	}
 }
@@ -120,12 +137,12 @@ bool typesEqual(Type *first, Type *second)
 }
 
 // bottom-up typechecking
-static Type* evalType(Node *node, FuncDefNode* func)
+static Type* evalType(Node *node, ScopeNode* parent)
 {
     if (auto *binOp = dynamic_cast<BinaryOpNode*>(node))
 	{
-        Type* leftType = evalType(binOp->left, func);
-		Type* rightType = evalType(binOp->right, func);
+        Type* leftType = evalType(binOp->left, parent);
+		Type* rightType = evalType(binOp->right, parent);
 		if (typesEqual(leftType, rightType)) {
 			return leftType;
 		}
@@ -136,21 +153,16 @@ static Type* evalType(Node *node, FuncDefNode* func)
     }
 	else if (auto* unOp = dynamic_cast<UnaryOpNode*>(node))
 	{
-		return evalType(unOp->expression, func);
+		return evalType(unOp->expression, parent);
 	}
     else if (auto *intNode = dynamic_cast<ImmediateNode*>(node))
 	{
+		(void) intNode;
         return new ImmediateType();
     }
 	else if (auto* var = dynamic_cast<VariableNode*>(node))
 	{
-		if (!func->findSymbolScope(var->name)) {
-			throw_error_line(1, 
-							 var->line, 
-							 fmt::format("Use of uninitialized variable {}", var->name));
-		}
-
-		Attrs attrs = func->scope.at(var->name);
+		Attrs attrs = parent->getSymbol(var->name, var->line, parent);
 		return attrs.type;
 	}
     else {
@@ -160,19 +172,19 @@ static Type* evalType(Node *node, FuncDefNode* func)
 }
 
 // add it to the local scope
-static void evalDeclaration(DeclarationNode* node, FuncDefNode* func)
+static void evalDeclaration(DeclarationNode* node, ScopeNode* parent)
 {
 	if (node->assignment != nullptr) {
-		node->assignment->type = evalType(node->assignment->expression, func);
+		node->assignment->type = evalType(node->assignment->expression, parent);
 		if (!typesEqual(node->type, node->assignment->type)) {
 			throw_error_line(1, node->line, "evalDeclaration: Unequal types");
 		}
 	}
 
 	// check if not already declared in this scope
-	if (func->scope.count(node->name))
+	if (parent->scope.count(node->name))
 	{
-		Attrs attrs = func->getSymbol(node->name);
+		Attrs attrs = parent->getSymbol(node->name, node->line, parent);
 		throw_error_line(1, 
 						 node->line, 
 						 fmt::format("'{}' was redeclared. First declared on line {}", 
@@ -180,20 +192,16 @@ static void evalDeclaration(DeclarationNode* node, FuncDefNode* func)
 									 attrs.line));
 	}
 
-	func->frameSize -= node->type->size;
-	func->scope.insert({node->name, Attrs{node->type, func->frameSize, node->line}});
+	int offset = parent->changeFrameSize(parent, node->type->size);
+	parent->scope.insert({node->name, Attrs{node->type, offset, node->line}});
 }
 
-static void evalAssignment(AssignmentNode* node, FuncDefNode* func)
+static void evalAssignment(AssignmentNode* node, ScopeNode* parent)
 {
 	// TODO: verify that the left side is actually an lvalue
 	
-	if (func->findSymbolScope(node->name) != 1) {
-		throw_error_line(1, node->line, fmt::format("Variable '{}' isn't in scope", node->name));
-	}
-
-	Attrs var = func->getSymbol(node->name);
-	node->expression->type = evalType(node->expression, func);
+	Attrs var = parent->getSymbol(node->name, node->line, parent);
+	node->expression->type = evalType(node->expression, parent);
 
 	if (!typesEqual(var.type, node->expression->type)) {
 		throw_error_line(1, node->line, "evalAssignment: Unequal types");
@@ -201,17 +209,102 @@ static void evalAssignment(AssignmentNode* node, FuncDefNode* func)
 
 }
 
-static void evalIf(IfNode* node, FuncDefNode* func)
+static void evalReturn(ReturnNode* node, ScopeNode* parent)
 {
-	evalStatements(node, func);
+	evalExpression(node->expression, parent);
+	FuncDefNode* func = node->findParentFunction(node->parent);
+	if (func == nullptr)
+		throw_error(1, "Return has no parent function");
+
+	Type* exprType = evalType(node->expression, func);
+	if (!typesEqual(func->returnType, exprType))
+		throw_error_line(1, node->line, "Invalid return type");
+	
+	node->expression->type = exprType;
 }
 
-static void evalElse(StatementNode* node, FuncDefNode* func, int index)
+static void evalIf(IfNode* node, ScopeNode* parent)
 {
-	fmt::print("FUCK\n");
-	if (index == 0 || !dynamic_cast<IfNode*>(func->body.at(index -1)))
+	evalExpression(node->expression, node);
+	evalStatements(node, parent);
+}
+
+static void evalElse(StatementNode* node, ScopeNode* parent, int index)
+{
+	if (index == 0 || !dynamic_cast<IfNode*>(parent->body.at(index -1)))
 	{
 		throw_error_line(1, node->line, "Missing if statement before else");
 	}
-	evalStatements(node, func);
+	evalStatements(node, parent);
+}
+
+static void evalLoop(LoopNode* node)
+{
+	if (auto* whilel = dynamic_cast<ForNode*>(node)) {
+		if (!dynamic_cast<VoidNode*>(whilel->prologue)) {
+			evalExpression(whilel->prologue, whilel);
+		}
+		if (!dynamic_cast<VoidNode*>(whilel->epilogue)) {
+			evalExpression(whilel->epilogue, whilel);
+		}
+	}
+	if (!dynamic_cast<VoidNode*>(node->expression))
+		evalExpression(node->expression, node);
+
+	evalStatements(node, node);
+}
+
+static void evalBreak(BreakNode* node)
+{
+	// if no ancestor is a loop throw error
+	if (node->findParentLoop(node->parent) == nullptr) {
+		throw_error_line(1, node->line, "Break can only be used in loops");
+	}
+}
+
+// again copied
+static void evalContinue(ContinueNode* node)
+{
+	if (node->findParentLoop(node->parent) == nullptr) {
+		throw_error_line(1, node->line, "Continue can only be used in loops");
+	}
+}
+
+// validate that all variables in an expression are in scope
+// parent = parent of the expression
+static bool evalExpression(Node* expr, ScopeNode* parent)
+{
+	Operand vreg;
+
+	if (dynamic_cast<ImmediateNode*>(expr)) {
+		return true;
+	}
+	else if (auto* binOp = dynamic_cast<BinaryOpNode*>(expr))
+	{
+		evalExpression(binOp->left, parent);
+		evalExpression(binOp->right, parent);
+	}
+	else if (auto* unOp = dynamic_cast<UnaryOpNode*>(expr))
+	{
+		evalExpression(unOp->expression, parent);
+	}
+	else if (auto* var = dynamic_cast<VariableNode*>(expr))
+	{
+		parent->getSymbol(var->name, var->line, parent);
+	}
+	else if (auto* declNode = dynamic_cast<DeclarationNode*>(expr))
+	{
+		evalDeclaration(declNode, parent);
+	}
+	else if (auto* asg = dynamic_cast<AssignmentNode*>(expr))
+	{
+		// check that lvalues exist
+		evalAssignment(asg, parent);
+	}
+	else {
+		throw_error_line(1, 
+						 expr->line, 
+						 fmt::format("genExpression: no rule for {}", expr->typeName()));
+	}
+	return true;
 }

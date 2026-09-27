@@ -55,5 +55,10 @@ enum TokenType {
 	IF,
 	ELSE,
 	RETURN,
+	WHILE,
+	DO,
+	FOR,
+	BREAK,
+	CONTINUE,
 	END_OF_FILE,
 };

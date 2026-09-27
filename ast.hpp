@@ -6,13 +6,30 @@
 
 #include "error.hpp"
 #include "operators.hpp"
+#include "taco.hpp"
 #include "type.hpp"
 #include "utils.hpp"
 
+class Parameter {
+	public:
+		Type *type;
+		std::string identifier;
+
+		Parameter(Type *type, std::string identifier) {
+			this->type = type;
+			this->identifier = identifier;
+		}
+
+		void print(int indent) {
+			(void) indent;
+			fmt::print("{} {}, ", type->typeName(), identifier);
+		}
+};
+
 class Node {
 	public:
-		Type *type = nullptr;
 		int line;
+		Type *type = nullptr; // yeah it's not right but like man whatever
 
 		Node(int line) : line(line) {}
 
@@ -21,16 +38,41 @@ class Node {
 			fmt::print("{}\n", typeName());
 		}
 
-		virtual void printChildren(int indent) {}
+		virtual void printChildren(int indent) {
+			(void) indent;
+		}
 
 		virtual void killChildren() {}
 
 		virtual std::string typeName() {
 			return "Node";
 		}
+		
+		// TODO: add destructors to all classes
+		virtual ~Node() = default;
 };
 
-// symbol tables
+// might be better in case i forget to set something? idk.
+class VoidNode : public Node {
+	public:
+		VoidNode(int line) : Node(line) { }
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("{}\n", typeName());
+		}
+		void printChildren(int indent) {
+			(void)indent;
+		}
+		void killChildren() override {
+			// TODO: add kill self to all
+		}
+		std::string typeName() {
+			return "VoidNode";
+		}
+};
+
+// for symbol tables
 struct Attrs {
 	Type* type;
 	int line; // declaration line
@@ -43,53 +85,68 @@ struct Attrs {
 	}
 };
 
+class ScopeNode;
+class FuncDefNode;
+class GodNode;
+
 class StatementNode : public Node {
 	public:
 		std::vector<Node*> body;
-		// each locally scoped symbol has a name and Attributes
-		std::unordered_map<std::string, Attrs> scope;
-		StatementNode* parent = nullptr;
+		ScopeNode* parent = nullptr;
 
-		StatementNode(int line) : Node(line) {}
-
-		// used in semantic analysis to verify that the variable exists in scope
-		bool findSymbolScope(std::string name)
-		{
-			if (this->scope.count(name) == 1) return true;
-			else if (this->scope.count(name) == 0 && this->parent == nullptr) {
-				throw_error_line(1,
-								 this->line,
-								 fmt::format("Variable '{}' is not defined", name));
-			}
-			else if (this->scope.count(name) > 1) {
-				throw_error_line(1,
-								 this->line,
-								 fmt::format("Compiler error: {} was declared more "
-											 "than once in a given scope!!!"));
-			}
-			else {
-				throw_error_line(1,
-								 this->line,
-								 fmt::format("idk what to call this one but it's not good"));
-			}
-			return this->parent->findSymbolScope(name);
-		}
-
-		// used in taco, variable guaranteed to exist thanks to sema
-		Attrs getSymbol(std::string name)
-		{
-			if (this->scope.count(name))
-				return this->scope.at(name);
-
-			return this->parent->getSymbol(name);
+		StatementNode(int line, ScopeNode* parent) : Node(line) {
+			this->parent = parent;
 		}
 
 };
 
-
-class GodNode : public StatementNode {
+class ScopeNode : public StatementNode {
 	public:
-		GodNode(int line) : StatementNode(line) {}
+		// each locally scoped symbol has a name and Attributes
+		std::unordered_map<std::string, Attrs> scope;
+
+		ScopeNode(int line, ScopeNode* parent) : StatementNode(line, parent) {}
+
+		// returns the symbol OR throws an error
+		static Attrs getSymbol(std::string name, int line, ScopeNode* parent)
+		{
+			size_t count = parent->scope.count(name);
+
+			if (count == 1) {
+				return parent->scope.at(name);
+			}
+			else if (count > 1) {
+				throw_error_line(1,
+								 line,
+								 fmt::format("Compiler error: {} was declared more "
+											 "than once in a given scope. I messed up somewhere"));
+			}
+			else if (!parent->scope.count(name) && parent->parent == nullptr) {
+				throw_error_line(1, line, fmt::format("Use of uninitialized variable {}", name));
+			}
+
+			return parent->parent->getSymbol(name, line, parent->parent);
+		}
+
+		virtual void print(int indent) {
+			(void)indent;
+			throw_error(1, "Never should have come here (ScopeNode->print())");
+		}
+		virtual void printChildren(int indent) {
+			(void)indent;
+			throw_error(1, ":sobbingemoji: (ScopeNode->printChildren())");
+		}
+		virtual std::string typeName() {
+			return "ScopeNode";
+		}
+
+		// for changing parent function
+		int changeFrameSize(ScopeNode* parent, int size);
+};
+
+class GodNode : public ScopeNode {
+	public:
+		GodNode(int line, ScopeNode* parent = nullptr) : ScopeNode(line, parent) {}
 
 		void printChildren(int indent) override {
 			print(indent);
@@ -107,6 +164,61 @@ class GodNode : public StatementNode {
 			return "GodNode";
 		}
 };
+
+class FuncDefNode : public ScopeNode {
+	public:
+		std::string name;
+		Type *returnType;
+		std::vector<Parameter> paramList;
+		int frameSize = 0;
+
+		FuncDefNode(int line,
+					ScopeNode* parent,
+					std::string name,
+					Type *returnType) : ScopeNode(line, parent) {
+			this->name = name;
+			this->returnType = returnType;
+		}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("{} {} {} (", typeName(), returnType->typeName(), name);
+			for (Parameter i : paramList) {
+				i.print(indent + 1);
+			}
+			fmt::print(")\n");
+		}
+
+		void printChildren(int indent) override {
+			print(indent);
+			for (Node *i : body) {
+				i->printChildren(indent + 1);
+			}
+		}
+
+		void killChildren() override {
+			for (Node *i : body) {
+				i->killChildren();
+			}
+			delete this;
+		}
+
+		std::string typeName() override {
+			return "FuncDefNode";
+		}
+};
+
+inline int ScopeNode::changeFrameSize(ScopeNode* parent, int size)
+{
+	if (auto* func = dynamic_cast<FuncDefNode*>(parent))
+	{
+		return func->frameSize -= size;
+	}
+	else if (dynamic_cast<GodNode*>(parent)) {
+		throw_error(1, "Global variables aren't supported yet");
+	}
+	return this->changeFrameSize(parent->parent, size);
+}
 
 BinaryOp TokenTypeToBinaryOp(TokenType op);
 std::string binaryOpToStr(BinaryOp op);
@@ -176,7 +288,6 @@ class UnaryOpNode : public Node {
 		}
 };
 
-
 class ImmediateNode : public Node {
 	public:
 		int value;
@@ -199,10 +310,10 @@ class ImmediateNode : public Node {
 		}
 };
 
-
 class VariableNode : public Node {
 	public:
 		std::string name;
+		Type *type;
 
 		VariableNode(int line, std::string name) : Node(line) {
 			this->name = name;
@@ -222,74 +333,11 @@ class VariableNode : public Node {
 		}
 };
 
-
-class Parameter {
-	public:
-		Type *type;
-		std::string identifier;
-
-		Parameter(Type *type, std::string identifier) {
-			this->type = type;
-			this->identifier = identifier;
-		}
-
-		void print(int indent) {
-			fmt::print("{} {}, ", type->typeName(), identifier);
-		}
-};
-
-
-class FuncDefNode : public StatementNode {
-	public:
-		std::string name;
-		Type *returnType;
-		std::vector<Parameter> paramList;
-		int frameSize = 0;
-		Node* parent;
-
-		FuncDefNode(int line,
-					Node* parent,
-					std::string name,
-					Type *returnType) : StatementNode(line) {
-			this->name = name;
-			this->parent = parent;
-			this->returnType = returnType;
-		}
-
-		void print(int indent) override {
-			printIndentLines(indent);
-			fmt::print("{} {} {} (", typeName(), returnType->typeName(), name);
-			for (Parameter i : paramList) {
-				i.print(indent + 1);
-			}
-			fmt::print(")\n");
-		}
-
-		void printChildren(int indent) override {
-			print(indent);
-			for (Node *i : body) {
-				i->printChildren(indent + 1);
-			}
-		}
-
-		void killChildren() override {
-			for (Node *i : body) {
-				i->killChildren();
-			}
-			delete this;
-		}
-
-		std::string typeName() override {
-			return "FuncDefNode";
-		}
-};
-
-
-class ReturnNode : public Node {
+class ReturnNode : public StatementNode {
 	public:
 		Node *expression = nullptr;
 
-		ReturnNode(int line) : Node(line) {}
+		ReturnNode(int line, ScopeNode* parent) : StatementNode(line, parent) {}
 
 		std::string typeName() override {
 			return "ReturnNode";
@@ -308,6 +356,16 @@ class ReturnNode : public Node {
 		void killChildren() override {
 			delete expression;
 			delete this;
+		}
+
+		FuncDefNode* findParentFunction(ScopeNode* parent)
+		{
+			if (parent == nullptr)
+				return nullptr;
+			else if (auto* funky = dynamic_cast<FuncDefNode*>(parent))
+				return funky;
+
+			return findParentFunction(parent->parent);
 		}
 };
 
@@ -369,15 +427,9 @@ class DeclarationNode : public Node {
 		}
 };
 
-
-// class VoidNode : public Node {
-// 	public:
-// 		VoidNode() : Node() {}
-// };
-
-class ElseNode : public StatementNode {
+class ElseNode : public ScopeNode {
 	public:		
-		ElseNode(int line) : StatementNode(line) {}
+		ElseNode(int line, ScopeNode* parent) : ScopeNode(line, parent) {}
 
 		void print(int indent) override {
 			printIndentLines(indent);
@@ -397,14 +449,13 @@ class ElseNode : public StatementNode {
 		}
 };
 
-
-class IfNode : public StatementNode {
+class IfNode : public ScopeNode {
 	public:
 		Node* expression;
 		ElseNode* elseBranch = NULL;
 
-		IfNode(int line, Node* expression)
-		:	StatementNode(line),
+		IfNode(int line, ScopeNode* parent, Node* expression)
+		:	ScopeNode(line, parent),
 			expression(expression) {}
 
 		void print(int indent) override {
@@ -426,4 +477,183 @@ class IfNode : public StatementNode {
 		std::string typeName() override {
 			return "IfNode";
 		}
+};
+
+class LoopNode : public ScopeNode {
+	public:
+		Node* expression;
+		Label* endLabel;
+		Label* startLabel;
+
+		LoopNode(int line, ScopeNode* parent, Node* expression, std::string loop)
+		:	ScopeNode(line, parent),
+			expression(expression) {
+				startLabel = newLocalLabel(loop);
+				endLabel = newLocalLabel(std::string{loop}.append("_end"));
+			}
+
+		void print(int indent) override {
+			(void)indent;
+			throw_error(1, "Tryna print() LoopNode");
+		}
+
+		void printChildren(int indent) override {
+			(void)indent;
+			throw_error(1, "Tryna printChildren() LoopNode");
+		}
+
+		static void printLoopChildren(LoopNode* loop, int indent) {
+			loop->print(indent);
+			for (Node* node : loop->body)
+				node->printChildren(indent + 2);
+		}
+
+		std::string typeName() override {
+			return "LoopNode";
+		}
+};
+
+class WhileNode : public LoopNode {
+	public:
+		WhileNode(int line, ScopeNode* parent, Node* expression)
+		:	LoopNode(line, parent, expression, "while") {
+
+		}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("While\n");
+			expression->printChildren(indent + 1);
+			printIndentLines(indent + 1);
+			fmt::print(":>\n");
+		}
+
+		void printChildren(int indent) override {
+			printLoopChildren(this, indent + 2);
+		}
+
+		std::string typeName() override {
+			return "WhileNode";
+		}
+};
+
+class DoWhileNode : public LoopNode {
+	public:
+		DoWhileNode(int line, ScopeNode* parent, Node* expression = nullptr)
+		:	LoopNode(line, parent, expression, "while") {}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("DoWhile\n");
+			expression->printChildren(indent + 1);
+			printIndentLines(indent + 1);
+			fmt::print(":>\n");
+		}
+
+		void printChildren(int indent) override {
+			printLoopChildren(this, indent + 2);
+		}
+
+		std::string typeName() override {
+			return "DoWhileNode";
+		}
+};
+
+class ForNode : public LoopNode {
+	public:
+		Node* prologue;
+		Node* epilogue;
+		Label* epilogueLabel;
+
+		ForNode(int line, 
+				ScopeNode* parent, 
+				Node* expression = nullptr, 
+				Node* prologue = nullptr, 
+				Node* epilogue = nullptr)
+		:
+			LoopNode(line, parent, expression, "for"),
+			prologue(prologue), epilogue(epilogue)
+		{
+			epilogueLabel = newLocalLabel("for_epilogue");
+		}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("For\n");
+			printIndentLines(indent);
+			fmt::print("Prologue:\n");
+			prologue->printChildren(indent + 1);
+			printIndentLines(indent);
+			fmt::print("Expr:\n");
+			expression->printChildren(indent + 1);
+			printIndentLines(indent + 1);
+			fmt::print(":>\n");
+		}
+
+		void printChildren(int indent) override {
+			printLoopChildren(this, indent + 2);
+		}
+
+		std::string typeName() override {
+			return "ForNode";
+		}
+};
+
+class BreakNode : public StatementNode {
+	public:
+		BreakNode(int line, ScopeNode* parent) : StatementNode(line, parent) {}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("Break\n");
+		}
+
+		void printChildren(int indent) override {
+			print(indent);
+		}
+
+		std::string typeName() override {
+			return "BreakNode";
+		}
+		
+		LoopNode* findParentLoop(ScopeNode* parent)
+		{
+			if (parent == nullptr)
+				return nullptr;
+			else if (auto* loopy = dynamic_cast<LoopNode*>(parent))
+				return loopy;
+			else
+				return this->findParentLoop(parent->parent);
+		}
+
+};
+
+// basically a copy of BreakNode, should combine em
+class ContinueNode : public StatementNode {
+	public:
+		ContinueNode(int line, ScopeNode* parent) : StatementNode(line, parent) {}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("Continue\n");
+		}
+
+		void printChildren(int indent) override {
+			print(indent);
+		}
+
+		std::string typeName() override {
+			return "ContinueNode";
+		}
+		
+		LoopNode* findParentLoop(ScopeNode* parent)
+		{
+			if (parent == nullptr)
+				return nullptr;
+			else if (auto* loopy = dynamic_cast<LoopNode*>(parent))
+				return loopy;
+			else
+				return this->findParentLoop(parent->parent);
+		}
+
 };

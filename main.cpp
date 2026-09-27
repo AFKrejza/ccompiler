@@ -1,24 +1,11 @@
 /*
 	compile with make
 
-	makefile flags:
-	-DLEX to print token list
-	-DAST to print validated AST
-	-DTAC to print TAC IR
-	-DASM to print assembly
-
-	-Wall -Wextra -Werror -Wshadow -Wuninitialized
-
-	Also use
-	-fsanitize=address,undefined
-	-O2 for testing and non-debugging builds
-
 	echo $?
-
 	To check gcc assembly: gcc INPUT.c -S -masm=intel
 	Try with various optimizations e.g. -O2
 
-	2026/04/09: Compiles into out.s, assembles into a.out
+	2026-09-27: Compiles into out.s, assembles into a.out
 
 	TODO: create a testing setup for each part of the compiler, not just codegen
 */
@@ -97,19 +84,16 @@ void throw_error_line(int code, int line, std::string msg)
 	exit(code);
 }
 
-
 void throw_error(int code, std::string msg)
 {
 	fmt::print("Error {}, {}\n", code, msg);
 	exit(code);
 }
 
-
-void throw_warn(int code, int line, std::string msg)
+void throw_warn(int line, std::string msg)
 {
 	std::cerr << "Warning on line " << line << ": " << msg << std::endl;
 }
-
 
 std::string readFile(std::string filename)
 {
@@ -123,7 +107,6 @@ std::string readFile(std::string filename)
 	};
 	return source_code;
 }
-
 
 // contains all symbols and keywords
 std::unordered_map<TokenType, std::string> populatePrintmap()
@@ -165,6 +148,11 @@ std::unordered_map<TokenType, std::string> populatePrintmap()
 	printmap[ELSE] = "else";
 	printmap[RETURN] = "return";
 	printmap[END_OF_FILE] = "end_of_file";
+	printmap[WHILE] = "while";
+	printmap[DO] = "do";
+	printmap[FOR] = "for";
+	printmap[BREAK] = "break";
+	printmap[CONTINUE] = "continue";
 	
 	return printmap;
 };

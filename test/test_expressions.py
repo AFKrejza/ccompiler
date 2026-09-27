@@ -130,7 +130,7 @@ class TestExpressions:
 	def test_mul(self, compile_and_run, input, expected):
 		assert compile_and_run(input) == expected
 
-	# TODO: This should be parametrized (ironically), separate for returning 1 or 0
+	# TODO: This should be parametrized (ironically)
 	@pytest.mark.parametrize("input, expected", [
 		(textwrap.dedent("""
 		int main()

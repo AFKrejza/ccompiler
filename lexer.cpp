@@ -4,15 +4,12 @@
 #include "utils.hpp"
 
 // all related to the tokenizer
-static bool is_whitespace(char c);
 static char peek();
 static char advance();
-static bool parse_identifier(std::string lexeme);
 static void parse_string();
 static bool isAtEnd();
 static void scanToken();
 static bool is_alnum_underscore(char c);
-static bool is_identifier_start(char c);
 static std::string scanLexeme();
 static void populateKeywords(std::unordered_map<TokenType, std::string> printmap);
 static bool parseInteger(std::string lexeme);
@@ -32,7 +29,7 @@ const std::unordered_map<TokenType, std::string> Token::printmap = populatePrint
 
 std::vector<Token> tokenList;
 
-static int current = 0; // i.e. the next unconsumed character is source[current]
+static unsigned long int current = 0; // i.e. the next unconsumed character is source[current]
 static int column = 0;
 static int line = 1;
 
@@ -55,7 +52,6 @@ void lexer(std::string src)
 	int len = tokenList.size();
 	fmt::print("Tokenizer done. tokenList size: {}\n", len);
 }
-
 
 static void scanToken()
 {
@@ -193,12 +189,11 @@ static void scanToken()
 	}
 }
 
-
 // defines all permitted keywords
 static void populateKeywords(std::unordered_map<TokenType, std::string> printmap)
 {
 	const std::vector<TokenType> keywordFilter = {
-		CHAR, SHORT, INT, LONG, IF, ELSE, RETURN
+		CHAR, SHORT, INT, LONG, IF, ELSE, RETURN, WHILE, DO, FOR, BREAK, CONTINUE
 	};
 
 	int len = keywordFilter.size();
@@ -210,7 +205,6 @@ static void populateKeywords(std::unordered_map<TokenType, std::string> printmap
 		}
 	}
 }
-
 
 static void parse_string()
 {
@@ -232,35 +226,10 @@ static void parse_string()
 	}
 	if (isAtEnd())
 	{
-		throw_warn(4, 
-				   line, 
+		throw_warn(line, 
 				   std::string{"Unterminated string on line "}.append(std::to_string(line)));
 	}
 }
-
-
-// https://en.cppreference.com/cpp/language/identifiers
-static bool parse_identifier(std::string lexeme)
-{
-	int start = current;
-	char c = source[current];
-	int len = lexeme.length();
-	if (!is_identifier_start(lexeme[0]))
-	{
-		throw_invalid_identifier_start(line);
-	}
-	for (int i = 0; i < len; i++)
-	{
-		if (!is_alnum_underscore(lexeme[i]))
-		{
-			throw_invalid_identifier(line);
-		}
-	}
-	addToken(TokenType::IDENTIFIER, current - start, lexeme);
-
-	return true;
-}
-
 
 bool isNumber(char c)
 {
@@ -270,43 +239,21 @@ bool isNumber(char c)
 	return false;
 }
 
-
 static void addToken(TokenType type, int length, std::string lexeme, Literal literal)
 {
 	Token token(type, length, lexeme, literal, line, column);
 	tokenList.push_back(token);
 }
 
-
-static bool is_whitespace(char c)
-{
-	switch (c)
-	{
-		case ' ':
-			return true;
-		case '\r':
-			return true;
-		case '\t':
-			return true;
-		case '\n':
-			return true;
-		default:
-			return false;
-	}
-}
-
-
 static bool isAtEnd()
 {
 	return current >= source.length();
 }
 
-
 static char peek()
 {
 	return source[current];
 }
-
 
 static char advance()
 {
@@ -319,17 +266,6 @@ static char advance()
 	return c;
 }
 
-
-static bool is_identifier_start(char c)
-{
-	if (isupper(c) || islower(c) || c == '_')
-	{
-		return true;
-	}
-	return false;
-}
-
-
 static bool is_alnum_underscore(char c)
 {
 	if (isupper(c) || islower(c) || c == '_' || isNumber(c))
@@ -338,7 +274,6 @@ static bool is_alnum_underscore(char c)
 	}
 	return false;
 }
-
 
 static std::string scanLexeme()
 {
@@ -356,7 +291,6 @@ static std::string scanLexeme()
 
 	return lexeme;
 }
-
 
 // only does positive ints
 static bool parseInteger(std::string lexeme)
@@ -376,12 +310,10 @@ static bool parseInteger(std::string lexeme)
 	return true;
 }
 
-
 static int ctoi(char c)
 {
 	return c - '0';
 }
-
 
 void printTokens()
 {
@@ -397,16 +329,12 @@ void printTokens()
 	}
 }
 
-
-// TODO: find a way to print where the error was thrown in this file
-// (a C++ exception or something?)
 void throw_invalid_identifier(int line)
 {
 	std::string s = "Invalid identifier symbol on line ";
 	s.append(std::to_string(line));
 	throw_error_line(2, line, s);
 }
-
 
 void throw_invalid_identifier_start(int line)
 {

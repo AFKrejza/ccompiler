@@ -75,7 +75,6 @@ class TestVariables:
 	def test_vars_compiler_errors(self, compile_fail, input):
 		assert compile_fail(input) != 0
 
-	# TODO: Add more tests with expressions
 	@pytest.mark.parametrize("input, expected", [
 		(textwrap.dedent("""
 		int main()

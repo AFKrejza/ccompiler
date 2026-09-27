@@ -80,8 +80,6 @@ class Token {
 
 		static std::string tokenTypeToStr(TokenType type)
 		{
-			int int_type = (int)type;
-
 			auto it = printmap.find(type);
 			if (it != printmap.end()) {
 				return it->second;

@@ -2,11 +2,15 @@
 
 #include <fmt/core.h>
 
+#include "utils.hpp"
+
 class Instruction {
 	public:
 		virtual ~Instruction() = default;
 
-		virtual void print(int indent) {}
+		virtual void print(int indent) {
+			(void) indent;
+		}
 
 		virtual std::string typeName() {
 			return "Instruction";
@@ -28,7 +32,7 @@ struct Operand {
 	int val;
 
 	int offset = 0;
-	std::string name;
+	std::string name{};
 
 	// vReg number and stack offset
 	static Operand Temp(int vReg, int offset) {
@@ -144,13 +148,17 @@ class Label : public Instruction {
 			this->name = name;
 		}
 
+		Label* def() {
+			return new Label(std::string{this->name}.append(":"));
+		}
+
 		void print(int indent) override {
 			printIndentLines(indent);
-			fmt::print("Label {}\n", name);
+			fmt::print("{}\n", name);
 		}
 
 		std::string typeName() override {
-			return "Label";
+			return fmt::format("Label");
 		}
 };
 
@@ -206,31 +214,4 @@ class JumpIfFalseInstr : public JumpInstr {
 		}
 };
 
-class JumpIfInstr : public JumpInstr {
-	public:
-		BinaryOp condition; // SORT of a BinaryOp. But semantically different here.
-		// should probably translate it to some other enum. Idk bro.
-		Operand operand;
-		Operand comparand;
-
-		JumpIfInstr(BinaryOp condition, Operand operand, Operand comparand, Label* label)
-		:	JumpInstr(label),
-			condition(condition),
-			operand(operand),
-			comparand(comparand) {}
-
-		void print(int indent) override {
-			printIndentLines(indent);
-			fmt::print("JumpIf({}({}) {} {}({})) -> {} \n",
-					   operand.name,
-					   operand.val,
-					   binaryOpToStr(condition),
-					   comparand.name,
-					   comparand.val,
-					   label->name);
-		}
-
-		std::string typeName() override {
-			return "JumpIfInstr";
-		}
-};
+Label* newLocalLabel(std::string text);

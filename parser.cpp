@@ -12,7 +12,7 @@ extern std::vector<Token> tokenList;
 static int current = 0;
 
 static Token advance(int advanceBy = 1);
-static Token retreat(int retreatBy = 1);
+// static Token retreat(int retreatBy = 1);
 static Token peek(int peekBy = 1);
 static inline Token token();
 
@@ -27,13 +27,15 @@ static Node* parseUnary();
 static Node *parseFactor();
 static Node *parseFuncDef(GodNode* parent);
 static std::vector<Parameter> parseParamList();
-static std::vector<Node*> parseStatements(bool isCompound, FuncDefNode *func);
+static std::vector<Node*> parseStatements(bool isCompound, ScopeNode* parent);
 static Type *parseType();
 static Node* parseDeclaration();
 static AssignmentNode* parseAssignment();
-
-static Node* parseIf(FuncDefNode* func);
-static ElseNode* parseElse(FuncDefNode* func);
+static IfNode* parseIf(ScopeNode* parent);
+static ElseNode* parseElse(ScopeNode* parent);
+static WhileNode* parseWhile(ScopeNode* parent);
+static DoWhileNode* parseDoWhile(ScopeNode* parent);
+static ForNode* parseFor(ScopeNode* parent);
 
 GodNode *parser()
 {
@@ -71,11 +73,11 @@ static Token advance(int advanceBy)
 	return token();
 }
 
-static Token retreat(int retreatBy)
-{
-	current = current - retreatBy;
-	return token();
-}
+// static Token retreat(int retreatBy)
+// {
+// 	current = current - retreatBy;
+// 	return token();
+// }
 
 static Token peek(int peekBy)
 {
@@ -87,10 +89,10 @@ static Token token()
 	return tokenList.at(current);
 }
 
-// starts at first token of expression, ends after semicolon
+// starts at first token of expression
 static Node *parseExpression()
 {
-	Node *root;
+	Node* root = nullptr;
 
 	if (token().tokenType != END_OF_FILE &&
 		token().tokenType != SEMICOLON)
@@ -290,7 +292,7 @@ static std::vector<Parameter> parseParamList()
 	return paramList;
 }
 
-static std::vector<Node*> parseStatements(bool isCompound, FuncDefNode *func)
+static std::vector<Node*> parseStatements(bool isCompound, ScopeNode* parent)
 {
 	if (isCompound) {
 		assert(token().tokenType == OPEN_CURLY_BRACE);
@@ -308,7 +310,7 @@ static std::vector<Node*> parseStatements(bool isCompound, FuncDefNode *func)
 
 		if (token().tokenType == RETURN)
 		{
-			ReturnNode *retNode = new ReturnNode(token().line);
+			auto *retNode = new ReturnNode(token().line, parent);
 			advance();
 			retNode->expression = parseExpression();
 			assert(token().tokenType == SEMICOLON);
@@ -331,11 +333,35 @@ static std::vector<Node*> parseStatements(bool isCompound, FuncDefNode *func)
 		}
 		else if (token().tokenType == IF)
 		{
-			body.push_back(parseIf(func));
+			body.push_back(parseIf(parent));
 		}
 		else if (token().tokenType == ELSE)
 		{
 			throw_error_line(1, token().line, "Else ain't got no preceding if");
+		}
+		else if (token().tokenType == WHILE)
+		{
+			body.push_back(parseWhile(parent));
+		}
+		else if (token().tokenType == BREAK)
+		{
+			body.push_back(new BreakNode(token().line, parent));
+			assert(peek().tokenType == SEMICOLON);
+			advance(2);
+		}
+		else if (token().tokenType == CONTINUE)
+		{
+			body.push_back(new ContinueNode(token().line, parent));
+			assert(peek().tokenType == SEMICOLON);
+			advance(2);
+		}
+		else if (token().tokenType == DO)
+		{
+			body.push_back(parseDoWhile(parent));
+		}
+		else if (token().tokenType == FOR)
+		{
+			body.push_back(parseFor(parent));
 		}
 		else {
 			throw_error_line(1, 
@@ -397,6 +423,7 @@ static Node* parseDeclaration()
 	return node;
 }
 
+// TODO: assignment is an expression. hmmm...
 static AssignmentNode* parseAssignment()
 {
 	assert(peek(1).tokenType == ASSIGNMENT);
@@ -438,22 +465,22 @@ std::string unaryOpToStr(UnaryOp op)
 	}
 }
 
-static std::vector<Node*> parseConditionalStatements(FuncDefNode* func)
+static std::vector<Node*> parseConditionalStatements(ScopeNode* parent)
 {
 	std::vector<Node*> statements;
 	if (token().tokenType == OPEN_CURLY_BRACE)
 	{
 		// parse compound statement
-		statements = parseStatements(true, func);
+		statements = parseStatements(true, parent);
 	}
 	else {
 		// parse one statement
-		statements = parseStatements(false, func);
+		statements = parseStatements(false, parent);
 	}
 	return statements;
 }
 
-static Node* parseIf(FuncDefNode* func)
+static IfNode* parseIf(ScopeNode* parent)
 {
 	int line = token().line;
 	advance();
@@ -463,22 +490,139 @@ static Node* parseIf(FuncDefNode* func)
 	assert(token().tokenType == CLOSED_PARENTHESES);
 	advance();
 
-	auto* ifNode = new IfNode(line, expr);
-	ifNode->body = parseConditionalStatements(func);
+	auto* ifNode = new IfNode(line, parent, expr);
+	ifNode->body = parseConditionalStatements(ifNode);
 
 	if (token().tokenType == ELSE)
 	{
-		ifNode->elseBranch = parseElse(func);
+		ifNode->elseBranch = parseElse(parent);
 	}
 
 	return ifNode;
 }
 
-static ElseNode* parseElse(FuncDefNode* func)
+static ElseNode* parseElse(ScopeNode* parent)
 {
-	auto* elseNode = new ElseNode(token().line);
+	auto* elseNode = new ElseNode(token().line, parent);
 	advance();
-	elseNode->body = parseConditionalStatements(func);
+	elseNode->body = parseConditionalStatements(elseNode);
 
 	return elseNode;
+}
+
+static WhileNode* parseWhile(ScopeNode* parent)
+{
+	int line = token().line;
+	advance();
+	assert(token().tokenType == OPEN_PARENTHESES);
+	advance();
+
+	Node* expr;
+
+	if (token().tokenType == CLOSED_PARENTHESES) {
+		expr = new VoidNode(token().line);
+	} else expr = parseExpression();
+	assert(token().tokenType == CLOSED_PARENTHESES);
+	advance();
+
+	auto* whileNode = new WhileNode(line, parent, expr);
+	whileNode->body = parseConditionalStatements(whileNode);
+	return whileNode;
+}
+
+static DoWhileNode* parseDoWhile(ScopeNode* parent)
+{
+	int line = token().line;
+	advance();
+	auto* loop = new DoWhileNode(line, parent);
+
+	loop->body = parseConditionalStatements(loop);
+	assert(token().tokenType == WHILE);
+	assert(peek().tokenType == OPEN_PARENTHESES);
+	advance(2);
+	loop->expression = parseExpression();
+	assert(token().tokenType == CLOSED_PARENTHESES);
+	assert(peek().tokenType == SEMICOLON);
+	advance(2);
+
+	return loop;	
+}
+
+static Node* parseForPrologue()
+{
+	Node* ret;
+	if (token().tokenType == INT)
+	{
+		ret = parseDeclaration();
+		assert(token().tokenType == SEMICOLON);
+		advance();
+	}
+	else if (token().tokenType == IDENTIFIER &&
+			 peek().tokenType == ASSIGNMENT)
+	{
+		ret = parseAssignment();
+		assert(token().tokenType == SEMICOLON);
+		advance();
+	}
+	else if (token().tokenType == SEMICOLON)
+	{
+		ret = new VoidNode(token().line);
+		advance();
+	}
+	else {
+		ret = parseExpression();
+	}
+	return ret;
+}
+
+static ForNode* parseFor(ScopeNode* parent)
+{
+	/*
+		for (;;)
+		{
+			return 1;
+		}
+
+		from first token after (
+
+		if token is ; prologue = voidnode; advance();
+		else parseExpression
+
+		second one parseExpression
+
+		third one: if token is ')', voidnode
+	*/
+
+	int line = token().line;
+	assert(peek().tokenType == OPEN_PARENTHESES);
+	advance(2);
+
+	Node* prologue = parseForPrologue();
+
+	Node* expression;
+	if (token().tokenType == SEMICOLON) // second ;
+	{
+		expression = new VoidNode(token().line);
+		advance();
+	} else {
+		expression = parseExpression();
+		assert(token().tokenType == SEMICOLON);
+		advance();
+	}
+		
+	Node* epilogue;
+	if (token().tokenType == CLOSED_PARENTHESES) {
+		epilogue = new VoidNode(token().line);
+	} else {
+		if (peek().tokenType == ASSIGNMENT) {
+			epilogue = parseAssignment();
+		}
+		else epilogue = parseExpression();
+	}
+
+	assert(token().tokenType == CLOSED_PARENTHESES);
+	advance();
+	auto* loop = new ForNode(line, parent, expression, prologue, epilogue);
+	loop->body = parseConditionalStatements(loop);
+	return loop;
 }

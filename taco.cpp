@@ -11,21 +11,22 @@
 #include "utils.hpp"
 
 static void emit(Instruction* instr);
-static void genDeclaration(DeclarationNode* node, FuncDefNode* func);
-static Operand genExpression(Node *node, FuncDefNode* func);
-static void genReturn(ReturnNode *node, FuncDefNode* func);
-static int newVreg();
-static void genAssignment(AssignmentNode* node, FuncDefNode* func);
-static Label* newLocalLabel(std::string text);
-static void genOr(BinaryOpNode* node, Operand dest, FuncDefNode* func);
-static void genAnd(BinaryOpNode* node, Operand dest, FuncDefNode* func);
-static void genStatements(std::vector<Node*> body, FuncDefNode* func);
-static void genIf(IfNode* node, FuncDefNode* func);
+static void genDeclaration(DeclarationNode* node, ScopeNode* parent);
+static Operand genExpression(Node *node, ScopeNode* parent);
+static void genReturn(ReturnNode *node, ScopeNode* parent);
+static void genAssignment(AssignmentNode* node, ScopeNode* parent);
+static void genOr(BinaryOpNode* node, Operand dest, ScopeNode* parent);
+static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent);
+static void genBody(std::vector<Node*> body, ScopeNode* parent);
+static void genIf(IfNode* node, ScopeNode* parent);
+static void genWhile(WhileNode* node);
+static void genDoWhile(DoWhileNode* node);
+static void genFor(ForNode* node);
+static void genBreak(BreakNode* node);
+static void genContinue(ContinueNode* node);
 
 static int current = 0; // temp register
-
 static int labelCount = 0;
-
 static std::vector<Instruction*> ir;
 
 std::vector<Instruction*> taco(GodNode *program)
@@ -37,7 +38,7 @@ std::vector<Instruction*> taco(GodNode *program)
 	{
 		if (auto* func = dynamic_cast<FuncDefNode*>(node))
 		{
-			genStatements(func->body, func);
+			genBody(func->body, func);
 			int pad = func->frameSize % 16;
 			func->frameSize = func->frameSize + 16 - (pad ? pad : 16);
 		}
@@ -47,26 +48,51 @@ std::vector<Instruction*> taco(GodNode *program)
 	return ir;
 }
 
-static void genStatements(std::vector<Node*> body, FuncDefNode* func)
+static int newVreg()
 {
-	for (int i = 0; i < body.size(); i++) {
-		if (auto* ret = dynamic_cast<ReturnNode*>(body[i])) {
-			genReturn(ret, func);
-		}
-		else if (auto* decl = dynamic_cast<DeclarationNode*>(body[i])) {
-			genDeclaration(decl, func);
-		}
-		else if (auto* assign = dynamic_cast<AssignmentNode*>(body[i])) {
-			genAssignment(assign, func);
-		}
-		else if (auto* ifs = dynamic_cast<IfNode*>(body[i])) {
-			genIf(ifs, func);
-		}
-		else {
-			throw_error_line(1, 
-							 body[i]->line, 
-							 fmt::format("Taco: no rule for {}", body[i]->typeName()));
-		}
+	return ++current;
+}
+
+static void genStatement(Node* node, ScopeNode* parent)
+{
+	if (auto* ret = dynamic_cast<ReturnNode*>(node)) {
+		genReturn(ret, parent);
+	}
+	else if (auto* decl = dynamic_cast<DeclarationNode*>(node)) {
+		genDeclaration(decl, parent);
+	}
+	else if (auto* assign = dynamic_cast<AssignmentNode*>(node)) {
+		genAssignment(assign, parent);
+	}
+	else if (auto* ifs = dynamic_cast<IfNode*>(node)) {
+		genIf(ifs, parent);
+	}
+	else if (auto* whilel = dynamic_cast<WhileNode*>(node)) {
+		genWhile(whilel);
+	}
+	else if (auto* doWhile = dynamic_cast<DoWhileNode*>(node)) {
+		genDoWhile(doWhile);
+	}
+	else if (auto* forl = dynamic_cast<ForNode*>(node)) {
+		genFor(forl);
+	}
+	else if (auto* breaker = dynamic_cast<BreakNode*>(node)) {
+		genBreak(breaker);
+	}
+	else if (auto* conch = dynamic_cast<ContinueNode*>(node)) {
+		genContinue(conch);
+	}
+	else {
+		throw_error_line(1, 
+						 node->line, 
+						 fmt::format("Taco: no rule for {}", node->typeName()));
+	}
+}
+
+static void genBody(std::vector<Node*> body, ScopeNode* parent)
+{
+	for (size_t i = 0; i < body.size(); i++) {
+		genStatement(body[i], parent);
 	}
 }
 
@@ -75,7 +101,7 @@ static void emit(Instruction* instr)
 	ir.push_back(instr);
 }
 
-static Operand genExpression(Node *node, FuncDefNode* func)
+static Operand genExpression(Node *node, ScopeNode* parent)
 {
 	Operand vreg;
 
@@ -83,28 +109,29 @@ static Operand genExpression(Node *node, FuncDefNode* func)
 		vreg = Operand::Immediate(n->value);
 	}
 	else if (auto* binOp = dynamic_cast<BinaryOpNode*>(node)) {
-		vreg = Operand::Temp(newVreg(), func->frameSize -= 4);
+		vreg = Operand::Temp(newVreg(), parent->changeFrameSize(parent, 4));
 		if (binOp->op == BinaryOp::LOGICAL_AND ||
 			binOp->op == BinaryOp::LOGICAL_OR) {
 			return vreg;
 		}
 		auto* binInstr = new BinaryInstr(vreg,
 										 binOp->op,
-										 genExpression(binOp->left, func),
-										 genExpression(binOp->right, func));
+										 genExpression(binOp->left, parent),
+										 genExpression(binOp->right, parent));
 
 		emit(binInstr);
 		return vreg;
 	}
 	else if (auto* unOp = dynamic_cast<UnaryOpNode*>(node)) {
-		vreg = Operand::Temp(newVreg(), func->frameSize -= 4);
-		Operand src = genExpression(unOp->expression, func);
+		vreg = Operand::Temp(newVreg(), parent->changeFrameSize(parent, 4));
+		Operand src = genExpression(unOp->expression, parent);
 		auto* unInstr = new UnaryInstr(vreg, src, unOp->op);
 		emit(unInstr);
 		return vreg;
 	}
 	else if (auto* var = dynamic_cast<VariableNode*>(node)) {
-		return Operand::Variable(var->name, func->scope.at(var->name).offset);
+		return Operand::Variable(var->name,
+								 parent->getSymbol(var->name, var->line, parent).offset);
 	}
 	else {
 		throw_error_line(1, 
@@ -114,28 +141,18 @@ static Operand genExpression(Node *node, FuncDefNode* func)
 	return vreg;
 }
 
-static void genReturn(ReturnNode *node, FuncDefNode* func)
+static void genReturn(ReturnNode *node, ScopeNode* parent)
 {
-	Operand dest = genExpression(node->expression, func);
+	Operand dest = genExpression(node->expression, parent);
 
 	if (auto* binOp = dynamic_cast<BinaryOpNode*>(node->expression))
 	{
-		switch (binOp->op)
-		{
-			case BinaryOp::LOGICAL_OR:
-				genOr(binOp, dest, func);
-				break;
-			case BinaryOp::LOGICAL_AND:
-				genAnd(binOp, dest, func);
-				break;
-		}
+		if (binOp->op == BinaryOp::LOGICAL_OR)
+				genOr(binOp, dest, parent);
+		else if (binOp->op == BinaryOp::LOGICAL_AND)
+				genAnd(binOp, dest, parent);
 	}
 	emit(new ReturnInstr(dest));
-}
-
-static int newVreg()
-{
-	return ++current;
 }
 
 BinaryOp TokenTypeToBinaryOp(TokenType op) {
@@ -197,7 +214,6 @@ std::string binaryOpToStr(BinaryOp op) {
 			return std::string{">="};
 
 		default:
-			// TODO: use a C++ feature to print the function automatically.
 			throw_error(1, "Error in BinaryInstr->toStr: Invalid operator");
 			exit(1);
 	}
@@ -219,23 +235,26 @@ std::string operandToStr(Operand operand)
 	}
 }
 
-static void genDeclaration(DeclarationNode* node, FuncDefNode* func)
+static void genDeclaration(DeclarationNode* node, ScopeNode* parent)
 {
 	if (node->assignment == nullptr) return;
-	genAssignment(node->assignment, func);
+	genAssignment(node->assignment, parent);
 }
 
-static Label* newLocalLabel(std::string text)
+Label* newLocalLabel(std::string text)
 {
 	for (char c : text) {
 		if (isNumber(c)) throw_error(1, fmt::format("Labels cannot contain numbers!"));
 	}
-	return new Label(std::string{".L"}.append(text.append(std::to_string(++labelCount))));
+	if (text.back() == ':')
+		throw_error(1, fmt::format("newLocalLabel can't receive label definitions"));
+	return new Label(std::string{".L_"}.append(text.append(std::to_string(++labelCount))));
 }
 
-static void genAssignment(AssignmentNode* node, FuncDefNode* func)
+static void genAssignment(AssignmentNode* node, ScopeNode* parent)
 {
-	Operand dest = Operand::Variable(node->name, func->getSymbol(node->name).offset);
+	Operand dest = Operand::Variable(node->name,
+									 parent->getSymbol(node->name, node->line, parent).offset);
 	Operand src;
 
 	if (auto* binOp = dynamic_cast<BinaryOpNode*>(node->expression))
@@ -243,73 +262,177 @@ static void genAssignment(AssignmentNode* node, FuncDefNode* func)
 		switch (binOp->op)
 		{
 			case BinaryOp::LOGICAL_OR:
-				genOr(binOp, dest, func);
+				genOr(binOp, dest, parent);
 				break;
 			case BinaryOp::LOGICAL_AND:
-				genAnd(binOp, dest, func);
+				genAnd(binOp, dest, parent);
 				break;
 			default:
-				src = genExpression(node->expression, func);
+				src = genExpression(node->expression, parent);
 				emit(new AssignmentInstr(dest, src));
 		}
 	}
 	else {
-		src = genExpression(node->expression, func);
+		src = genExpression(node->expression, parent);
 		emit(new AssignmentInstr(dest, src));
 	}
 }
 
-static void genOr(BinaryOpNode* node, Operand dest, FuncDefNode* func)
+static void genOr(BinaryOpNode* node, Operand dest, ScopeNode* parent)
 {
-	Label* ifTrue = newLocalLabel(".iftrue");
-	Label* ifFalse = newLocalLabel(".iffalse");
-	Label* cont = newLocalLabel(".cont");
+	Label* ifTrue = newLocalLabel("iftrue");
+	Label* ifFalse = newLocalLabel("iffalse");
+	Label* cont = newLocalLabel("cont");
 
-	Operand left = genExpression(node->left, func);
-	Operand right = genExpression(node->right, func);
+	Operand left = genExpression(node->left, parent);
+	Operand right = genExpression(node->right, parent);
 
 	emit(new JumpIfTrueInstr(ifTrue, left));
 	emit(new JumpIfFalseInstr(ifFalse, right));
-	emit(ifTrue);
+	emit(ifTrue->def());
 	emit(new AssignmentInstr(dest, Operand::Immediate(1)));
 	emit(new JumpInstr(cont));
-	emit(ifFalse);
+	emit(ifFalse->def());
 	emit(new AssignmentInstr(dest, Operand::Immediate(0)));
-	emit(cont);
+	emit(cont->def());
 }
 
-static void genAnd(BinaryOpNode* node, Operand dest, FuncDefNode* func)
+static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent)
 {
-	Label* skip = newLocalLabel(".skip");
-	Label* cont = newLocalLabel(".cont");
+	Label* skip = newLocalLabel("skip");
+	Label* cont = newLocalLabel("cont");
 
-	Operand left = genExpression(node->left, func);
-	Operand right = genExpression(node->right, func);
+	Operand left = genExpression(node->left, parent);
+	Operand right = genExpression(node->right, parent);
 
 	emit(new JumpIfFalseInstr(skip, left));
 	emit(new JumpIfFalseInstr(skip, right));
 	emit(new AssignmentInstr(dest, Operand::Immediate(1)));
 	emit(new JumpInstr(cont));
-	emit(skip);
+	emit(skip->def());
 	emit(new AssignmentInstr(dest, Operand::Immediate(0)));
-	emit(cont);
+	emit(cont->def());
 }
 
-static void genIf(IfNode* node, FuncDefNode* func)
+static void genIf(IfNode* node, ScopeNode* parent)
 {
 	Label* skip;
-	Operand expr = genExpression(node->expression, func);
+	Operand expr = genExpression(node->expression, node);
 
 	if (node->elseBranch) {
-		skip = newLocalLabel(".else");
+		skip = newLocalLabel("else");
 	}
 	else
-		skip = newLocalLabel(".cont");
+		skip = newLocalLabel("cont");
 
 	emit(new JumpIfFalseInstr(skip, expr));
-	genStatements(node->body, func);
-	emit(skip);
+	genBody(node->body, node);
+	emit(skip->def());
 
 	if (node->elseBranch)
-		genStatements(node->elseBranch->body, func);
+		genBody(node->elseBranch->body, parent);
+}
+
+static void genLoopStatements(std::vector<Node*> block, LoopNode* parent)
+{
+	for (size_t i = 0; i < block.size(); ++i)
+	{
+		if (dynamic_cast<BreakNode*>(block[i]))
+		{
+			emit(new JumpInstr(parent->endLabel));
+		}
+		else if (dynamic_cast<ContinueNode*>(block[i])) {
+			if (auto* forl = dynamic_cast<ForNode*>(parent)) {
+				emit(new JumpInstr(forl->epilogueLabel));
+			}
+			else emit(new JumpInstr(parent->startLabel));
+		}
+		else {
+			genStatement(block[i], parent);
+		}
+	}
+}
+
+static void genWhile(WhileNode* node)
+{
+	emit(node->startLabel->def());
+	Operand expr = genExpression(node->expression, node);
+	emit(new JumpIfFalseInstr(node->endLabel, expr));
+	genLoopStatements(node->body, node);
+	emit(new JumpInstr(node->startLabel));
+	emit(node->endLabel->def());
+}
+
+static void genDoWhile(DoWhileNode* node)
+{
+	emit(node->startLabel->def());
+	genLoopStatements(node->body, node);
+	Operand expr = genExpression(node->expression, node);
+	emit(new JumpIfTrueInstr(node->startLabel, expr));
+	emit(node->endLabel->def());
+}
+
+static void genFor(ForNode* node)
+{
+	/*
+		prologue
+		.forstart:
+		expression
+		jumpiffalse .forend
+		body
+			if continue: jump epilogue
+			if break: jump forend
+		.epilogue:
+		epilogue
+		jump .forstart
+		.forend:
+
+	*/
+	if (auto* decl = dynamic_cast<DeclarationNode*>(node->prologue))
+	{
+		genDeclaration(decl, node);
+	}
+	else if (dynamic_cast<VoidNode*>(node->prologue))
+	{}
+	else {
+		genExpression(node->prologue, node);
+	}
+	emit(node->startLabel->def());
+
+	if (!dynamic_cast<VoidNode*>(node->expression)) {
+		Operand expr = genExpression(node->expression, node);
+		emit(new JumpIfFalseInstr(node->endLabel, expr));
+	}
+
+	genLoopStatements(node->body, node);
+
+	emit(node->epilogueLabel->def());
+	if (auto* assign = dynamic_cast<AssignmentNode*>(node->epilogue)) {
+		genAssignment(assign, node);
+	}
+	else if (dynamic_cast<VoidNode*>(node->epilogue)) {}
+	else {
+		Operand expr = genExpression(node->epilogue, node);
+	}
+
+	emit(new JumpInstr(node->startLabel));
+	emit(node->endLabel->def());	
+}
+
+static void genBreak(BreakNode* node)
+{
+	emit(new JumpInstr(node->findParentLoop(node->parent)->endLabel));
+}
+
+static void genContinue(ContinueNode* node)
+{
+	Label* jmpLabel;
+	LoopNode* parent = node->findParentLoop(node->parent);
+	if (auto* forl = dynamic_cast<ForNode*>(parent)) {
+		jmpLabel = forl->epilogueLabel;
+	}
+	else {
+		jmpLabel = parent->startLabel;
+	}
+	emit(new JumpInstr(jmpLabel));
 }

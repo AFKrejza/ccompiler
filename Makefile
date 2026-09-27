@@ -1,20 +1,40 @@
 CXX := g++
-CXXFLAGS := -DTAC -DAST -DASM
+CXXFLAGS := -Wall -Werror -Wextra -g
+# -Wpedantic -Wswitch-enum -Wimplicit-fallthrough -Wreturn-type -Wshadow -Wuninitialized
+# -fsanitize=address,undefined
+
+# 	makefile flags:
+# 	-DLEX to print token list
+# 	-DAST to print validated AST
+# 	-DTAC to print TAC IR
+# 	-DASM to print assembly
+MYFLAGS := -DTAC -DAST -DASM #-DLEX # -O2
 LDFLAGS := -lfmt
 
 SOURCES := main.cpp lexer.cpp parser.cpp sema.cpp taco.cpp codegen.cpp
+
 OBJECTS:= $(SOURCES:.cpp=.o)
 
-.PHONY: all clean
+.PHONY: all clean re
 all: main
 
 main: $(OBJECTS)
 	$(CXX) $(OBJECTS) -o $@ $(LDFLAGS)
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(MYFLAGS) -MMD -MP -c $< -o $@
 
 -include $(OBJECTS:.o=.d)
 
+$(OBJECTS): Makefile
+
 clean:
 	rm -f main $(OBJECTS) $(OBJECTS:.o=.d)
+
+re:
+	$(MAKE) clean
+	$(MAKE) all
+
+r:
+	$(MAKE) all
+	$(MAKE) run
