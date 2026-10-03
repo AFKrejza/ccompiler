@@ -16,7 +16,7 @@ Terminals: type, IDENTIFIER, INTEGER
 
 2026-09-27 parser grammar:
 
-<program>		= <function>
+<program>		= { <function> }
 <function>		= "int" IDENTIFIER "(" <paramList> ")" <functionBody>
 <paramList>		= [ <parameter> { "," <parameter> } ]
 <parameter>		= "int" IDENTIFIER
@@ -37,7 +37,9 @@ Terminals: type, IDENTIFIER, INTEGER
 <term>			= <unary>		{ "*" <unary> }
 <unary>			= <unop> <unary> | <factor>
 <unop>			= "-" | "!"		// TODO: add ~ +
-<factor>		= INTEGER | IDENTIFIER | "(" <expression> ")"
+<factor>		= INTEGER | <call> | IDENTIFIER | "(" <expression> ")"
+<call>			= IDENTIFIER "(" <arguments> ")"
+<arguments>		= [ <expression> { "," <expression }  ]
 <while>			= "while" "(" <expression> ")" <statement>
 <dowhile>		= "do" <statement> "while" "(" <expression> ")"
 <for>			= "for" "(" [<expression> | <declaration>] ";" [<expression>] ";" [<expression>] ")" <statement>

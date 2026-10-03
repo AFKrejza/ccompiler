@@ -25,27 +25,44 @@ static void evalLoop(LoopNode* node);
 static void evalBreak(BreakNode* node);
 static void evalContinue(ContinueNode* node);
 static bool evalExpression(Node* expr, ScopeNode* parent);
+static void evalFunction(FuncDefNode* func);
+static void evalCall(CallNode* node, ScopeNode* parent);
 
-GodNode *sema(GodNode *program)
+GodNode* program;
+
+GodNode *sema(GodNode *prog)
 {
-	FuncDefNode *main = dynamic_cast<FuncDefNode*>(program->body[0]);
-	if (main == nullptr ||
-		main->typeName() != "FuncDefNode" ||
-		main->name != "main"){
-		throw_error(1, "Only the main function is currently supported.");
-	}
+	program = prog;
 
 	// add global vars
 
-	main->parent = program;
+	FuncDefNode* main = nullptr;
 
 	for (Node *node : program->body)
 	{
 		if (auto* func = dynamic_cast<FuncDefNode*>(node))
 		{
-			evalStatements(func, func);
+			if (func->name == "main")
+			{
+				if (main) throw_error_line(1, func->line, 
+					fmt::format("Function 'main' was redefined. Original definition on"
+								"line {}", main->line));
+				else main = func;
+			}
+
+			auto it = program->scope.find(func->name);
+			if (it != program->scope.end())
+				throw_error_line(1, func->line,
+						fmt::format("Redefinition of function {}, "
+									"first defined on line {}", it->first, it->second.line));
+
+			func->parent = program;
+			evalFunction(func);
+			program->scope.insert({func->name, Attrs{new FuncDefType{}, 0, func->line, func }});
 		}
 	}
+	if (main == nullptr)
+		throw_error(1, "Program is missing the main function");
 
 	fmt::print("Semantic analysis completed\n");
 	return program;
@@ -125,6 +142,9 @@ bool typesEqual(Type *first, Type *second)
 	if (dynamic_cast<ImmediateType*>(first) && dynamic_cast<ImmediateType*>(second)) {
 		return true;
 	}
+	if (dynamic_cast<FuncDefType*>(first) && dynamic_cast<FuncDefType*>(second)) {
+		return true;
+	}
 	
 	
 	auto *p1 = dynamic_cast<PointerType*>(first);
@@ -164,6 +184,11 @@ static Type* evalType(Node *node, ScopeNode* parent)
 	{
 		Attrs attrs = parent->getSymbol(var->name, var->line, parent);
 		return attrs.type;
+	}
+	else if (auto* func = dynamic_cast<CallNode*>(node))
+	{
+		Attrs attrs = program->getSymbol(func->name, func->line, program);
+		return attrs.func->returnType;
 	}
     else {
         throw_error_line(1, node->line, "Invalid Node type");
@@ -274,8 +299,6 @@ static void evalContinue(ContinueNode* node)
 // parent = parent of the expression
 static bool evalExpression(Node* expr, ScopeNode* parent)
 {
-	Operand vreg;
-
 	if (dynamic_cast<ImmediateNode*>(expr)) {
 		return true;
 	}
@@ -301,10 +324,64 @@ static bool evalExpression(Node* expr, ScopeNode* parent)
 		// check that lvalues exist
 		evalAssignment(asg, parent);
 	}
+	else if (auto* call = dynamic_cast<CallNode*>(expr))
+	{
+		evalCall(call, parent);
+	}
 	else {
 		throw_error_line(1, 
 						 expr->line, 
 						 fmt::format("genExpression: no rule for {}", expr->typeName()));
 	}
 	return true;
+}
+
+static void evalFunction(FuncDefNode* func)
+{
+	// add parameters to local scope
+	for (Parameter param : func->paramList)
+	{
+		int offset = func->changeFrameSize(func, param.type->size);
+		func->scope.insert({param.name, Attrs{param.type, offset, param.line}});
+	}
+	// TODO: unused variable & parameter check
+
+	evalStatements(func, func);
+}
+
+static void evalCall(CallNode* node, ScopeNode* parent)
+{
+	Attrs attrs = program->getSymbol(node->name, node->line, program);
+
+	auto* funcType = new FuncDefType{};
+	if (!typesEqual(funcType, attrs.type))
+	{
+		throw_error_line(1,
+						 node->line,
+						 fmt::format("Call to symbol {} which is not a {} but a {}",
+						 node->name, funcType->typeName(), attrs.type->typeName()));
+	}
+
+	FuncDefNode* func = attrs.func;
+
+	if (node->args.size() != func->paramList.size())
+	{
+		throw_error_line(1,
+			node->line,
+			fmt::format("Invalid number of arguments: got {}, expected {}",
+				node->args.size(), func->paramList.size()));
+	}
+	
+	for (size_t i = 0; i < node->args.size(); ++i)
+	{
+		node->args[i]->type = evalType(node->args[i], parent);
+		if (!typesEqual(node->args[i]->type, func->paramList[i].type))
+		{
+			throw_error_line(1, node->args[i]->line,
+				fmt::format("Mismatched argument types: got {}, expected {}",
+					node->args[i]->type->typeName(), func->paramList[i].type->typeName()));
+		}
+
+		evalExpression(node->args[i], parent);
+	}
 }

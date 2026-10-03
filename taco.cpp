@@ -24,6 +24,7 @@ static void genDoWhile(DoWhileNode* node);
 static void genFor(ForNode* node);
 static void genBreak(BreakNode* node);
 static void genContinue(ContinueNode* node);
+static Operand genCall(CallNode* node, ScopeNode* parent);
 
 static int current = 0; // temp register
 static int labelCount = 0;
@@ -31,16 +32,38 @@ static std::vector<Instruction*> ir;
 
 std::vector<Instruction*> taco(GodNode *program)
 {
-	auto* main = dynamic_cast<FuncDefNode*>(program->body[0]);
-	assert(main->name == "main");
-
 	for (Node* node : program->body)
 	{
 		if (auto* func = dynamic_cast<FuncDefNode*>(node))
 		{
+			auto* prologue = new FuncPrologueInstr(func->name);
+			emit(prologue);
+			size_t index = ir.size() - 1;
+
+			if (func->name == "main")
+			{
+				fmt::print("main pre: {}\n", func->frameSize);
+			}
+
+			for (size_t i = 0; i < func->paramList.size(); i++)
+			{
+				Attrs attrs = func->scope.at(func->paramList[i].name);
+				Operand op = Operand::Variable(func->paramList[i].name,
+											   attrs.offset,
+											   attrs.type->size);
+
+				emit(new SaveArg(i, op));
+			}
 			genBody(func->body, func);
+			func->frameSize = abs(func->frameSize);
 			int pad = func->frameSize % 16;
 			func->frameSize = func->frameSize + 16 - (pad ? pad : 16);
+			static_cast<FuncPrologueInstr*>(ir.at(index))->frameSize = func->frameSize;
+			emit(new FuncEpilogueInstr(func->name));
+			if (func->name == "main")
+			{
+				fmt::print("main: {}\n", func->frameSize);
+			}
 		}
 	}
 
@@ -109,6 +132,7 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 		vreg = Operand::Immediate(n->value);
 	}
 	else if (auto* binOp = dynamic_cast<BinaryOpNode*>(node)) {
+		// TODO: move this and other changeFrameSize to sema.
 		vreg = Operand::Temp(newVreg(), parent->changeFrameSize(parent, 4));
 		if (binOp->op == BinaryOp::LOGICAL_AND ||
 			binOp->op == BinaryOp::LOGICAL_OR) {
@@ -130,8 +154,14 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 		return vreg;
 	}
 	else if (auto* var = dynamic_cast<VariableNode*>(node)) {
+		Attrs variable = parent->getSymbol(var->name, var->line, parent);
 		return Operand::Variable(var->name,
-								 parent->getSymbol(var->name, var->line, parent).offset);
+								 variable.offset,
+								 variable.type->size);
+	}
+	else if (auto* call = dynamic_cast<CallNode*>(node)) {
+		(void)call;
+		return genCall(call, parent);
 	}
 	else {
 		throw_error_line(1, 
@@ -253,8 +283,10 @@ Label* newLocalLabel(std::string text)
 
 static void genAssignment(AssignmentNode* node, ScopeNode* parent)
 {
+	Attrs variable = parent->getSymbol(node->name, node->line, parent);
 	Operand dest = Operand::Variable(node->name,
-									 parent->getSymbol(node->name, node->line, parent).offset);
+									 variable.offset,
+									 variable.type->size);
 	Operand src;
 
 	if (auto* binOp = dynamic_cast<BinaryOpNode*>(node->expression))
@@ -435,4 +467,23 @@ static void genContinue(ContinueNode* node)
 		jmpLabel = parent->startLabel;
 	}
 	emit(new JumpInstr(jmpLabel));
+}
+
+static Operand genCall(CallNode* node, ScopeNode* parent)
+{
+	Operand retReg = Operand::Temp(newVreg(), parent->changeFrameSize(parent, 4));
+	std::vector<Operand> argRegs;
+
+	for (size_t i = 0; i < node->args.size(); ++i)
+	{
+		argRegs.push_back(genExpression(node->args[i], parent));
+	}
+	for (size_t i = 0; i < argRegs.size(); ++i)
+	{
+		emit(new LoadArg(i, argRegs[i]));
+	}
+	
+	emit(new CallInstr(node->name)); 
+	emit(new SaveRet(retReg));
+	return retReg;
 }

@@ -30,12 +30,19 @@ static void emitJumpIfFalseInstr(JumpIfFalseInstr* instr);
 static void emitLabel(Label* instr);
 static void emitJump(JumpInstr* instr);
 static void emitUnaryInstr(UnaryInstr* instr);
+static void emitFuncPrologueInstr(FuncPrologueInstr* instr);
+static void emitFuncEpilogueInstr(FuncEpilogueInstr* instr);
+static void emitCallInstr(CallInstr* instr);
+static void emitSaveRet(SaveRet* instr);
+static void emitLoadArg(LoadArg* instr);
+static void emitSaveArg(SaveArg* instr);
 
 std::ofstream output;
 
 std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode* ast)
 {
 	// TODO: have it use the user-defined output name
+	(void)ast;
 	(void) fileName;
 	if (std::filesystem::exists("out.s"))
 		system("rm out.s");
@@ -47,13 +54,6 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode*
 	
 	emitProgramStart();
 	
-	// kinda just hardcode main. Check sema.cpp
-	emitni(fmt::format("main: "));
-	emit("push rbp");
-	emit("mov rbp, rsp");
-	emit(fmt::format("sub rsp, {}", abs(static_cast<FuncDefNode*>(ast->body[0])->frameSize)));
-	emit("");
-
 	for (Instruction* i : ir)
 	{
 		if (auto* instr = dynamic_cast<ReturnInstr*>(i)) {
@@ -79,6 +79,30 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode*
 		}
 		else if (auto* instr = dynamic_cast<Label*>(i)) {
 			emitLabel(instr);
+		}
+		else if (auto* instr = dynamic_cast<FuncPrologueInstr*>(i))
+		{
+			emitFuncPrologueInstr(instr);
+		}
+		else if (auto* instr = dynamic_cast<FuncEpilogueInstr*>(i))
+		{
+			emitFuncEpilogueInstr(instr);
+		}
+		else if (auto* instr = dynamic_cast<CallInstr*>(i))
+		{
+			emitCallInstr(instr);
+		}
+		else if (auto* instr = dynamic_cast<SaveRet*>(i))
+		{
+			emitSaveRet(instr);
+		}
+		else if (auto* instr = dynamic_cast<LoadArg*>(i))
+		{
+			emitLoadArg(instr);
+		}
+		else if (auto* instr = dynamic_cast<SaveArg*>(i))
+		{
+			emitSaveArg(instr);
 		}
 		else {
 			throw_error(1, fmt::format("No rule for instruction type {}", i->typeName()));
@@ -106,6 +130,12 @@ static void emitni(std::string instr)
 {
 	output << instr << "\n";
 }
+
+// Could be nice to print variable names
+// static void emitComment(std::string comment)
+// {
+// 	output << "#" << comment << "\n";
+// }
 
 static void emitProgramStart()
 {
@@ -295,4 +325,78 @@ static void emitUnaryInstr(UnaryInstr* instr)
 			throw_error(1, "emitUnaryInstr: invalid Unary Instruction");
 	}
 	
+}
+
+static void emitFuncPrologueInstr(FuncPrologueInstr* instr)
+{
+	emitni(instr->name->def()->name);
+	emit("push rbp");
+	emit("mov rbp, rsp");
+	emit(fmt::format("sub rsp, {}", abs(instr->frameSize)));	
+}
+
+static void emitFuncEpilogueInstr(FuncEpilogueInstr* instr)
+{
+	(void)instr;
+	emit("");
+}
+
+static void emitCallInstr(CallInstr* instr)
+{
+	emit(fmt::format("call {}", instr->name));
+}
+
+static void emitSaveRet(SaveRet* instr)
+{
+	emit(fmt::format("mov {}, eax", operandText(instr->dest)));
+}
+
+static std::string getArgRegister(size_t index, int size)
+{
+	std::string reg;
+	fmt::print("size: {}\n\n", size);
+	switch (size)
+	{
+		case 4:
+			switch (index)
+			{
+				case 0:
+					reg = "edi";
+					break;
+				case 1:
+					reg = "esi";
+					break;
+				case 2:
+					reg = "edx";
+					break;
+				case 3:
+					reg = "ecx";
+					break;
+				case 4:
+					reg = "r8d";
+					break;
+				case 5:
+					reg = "r9d";
+					break;
+				default:
+					throw_error(1, "Only six arguments are supported for now");
+			}
+			break;
+		default:
+			throw_error(1, "Invalid argument size");
+	}
+	
+	return reg;
+}
+
+static void emitLoadArg(LoadArg* instr)
+{
+	emit(fmt::format("mov {}, {}", getArgRegister(instr->index, instr->src.size),
+								   operandText(instr->src)));
+}
+
+static void emitSaveArg(SaveArg* instr)
+{
+	emit(fmt::format("mov {}, {}", operandText(instr->dest),
+								   getArgRegister(instr->index, instr->dest.size)));
 }

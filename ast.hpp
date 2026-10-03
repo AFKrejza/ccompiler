@@ -12,17 +12,23 @@
 
 class Parameter {
 	public:
+		int line;
+		std::string name;
 		Type *type;
-		std::string identifier;
+		int offset; // to save to stack to prevent clobbering
 
-		Parameter(Type *type, std::string identifier) {
-			this->type = type;
-			this->identifier = identifier;
-		}
+		Parameter(int line, std::string name, Type *type)
+		:	line(line),
+			name(name),
+			type(type) {}
 
 		void print(int indent) {
 			(void) indent;
-			fmt::print("{} {}, ", type->typeName(), identifier);
+			fmt::print("{} {}", type->typeName(), name);
+		}
+
+		void printChildren(int indent) {
+			print(indent);
 		}
 };
 
@@ -52,7 +58,6 @@ class Node {
 		virtual ~Node() = default;
 };
 
-// might be better in case i forget to set something? idk.
 class VoidNode : public Node {
 	public:
 		VoidNode(int line) : Node(line) { }
@@ -72,21 +77,23 @@ class VoidNode : public Node {
 		}
 };
 
+class FuncDefNode;
+
 // for symbol tables
 struct Attrs {
 	Type* type;
-	int line; // declaration line
 	int offset;
+	int line; // declaration line
+	FuncDefNode* func = nullptr;
 
-	Attrs(Type* type, int offset, int line) {
-		this->type = type;
-		this->offset = offset;
-		this->line = line;
-	}
+	Attrs(Type* type, int offset, int line, FuncDefNode* func = nullptr)
+	:	type(type),
+		offset(offset),
+		line(line),
+		func(func) {}
 };
 
 class ScopeNode;
-class FuncDefNode;
 class GodNode;
 
 class StatementNode : public Node {
@@ -97,7 +104,6 @@ class StatementNode : public Node {
 		StatementNode(int line, ScopeNode* parent) : Node(line) {
 			this->parent = parent;
 		}
-
 };
 
 class ScopeNode : public StatementNode {
@@ -118,8 +124,9 @@ class ScopeNode : public StatementNode {
 			else if (count > 1) {
 				throw_error_line(1,
 								 line,
-								 fmt::format("Compiler error: {} was declared more "
-											 "than once in a given scope. I messed up somewhere"));
+								 fmt::format(
+									"Compiler error: {} was declared more "
+									"than once in a given scope. I messed up somewhere", name));
 			}
 			else if (!parent->scope.count(name) && parent->parent == nullptr) {
 				throw_error_line(1, line, fmt::format("Use of uninitialized variable {}", name));
@@ -183,8 +190,10 @@ class FuncDefNode : public ScopeNode {
 		void print(int indent) override {
 			printIndentLines(indent);
 			fmt::print("{} {} {} (", typeName(), returnType->typeName(), name);
-			for (Parameter i : paramList) {
-				i.print(indent + 1);
+			for (size_t i = 0; i < paramList.size(); ++i)
+			{
+				paramList[i].print(indent + 1);
+				if (i + 2 <= paramList.size()) fmt::print(", ");
 			}
 			fmt::print(")\n");
 		}
@@ -656,4 +665,27 @@ class ContinueNode : public StatementNode {
 				return this->findParentLoop(parent->parent);
 		}
 
+};
+
+class CallNode : public StatementNode {
+	public:
+		std::string name;
+		std::vector<Node*> args;
+
+		CallNode(int line, ScopeNode* parent, std::string name)
+		:	StatementNode(line, parent),
+			name(name) {}
+
+		void print(int indent) override {
+			printIndentLines(indent);
+			fmt::print("Call {}\n", name);
+		}
+
+		void printChildren(int indent) override {
+			print(indent);
+		}
+
+		std::string typeName() override {
+			return "CallNode";
+		}
 };

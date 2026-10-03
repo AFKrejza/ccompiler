@@ -60,3 +60,12 @@ class VoidType : public Type {
 			return "VoidType";
 		}
 };
+
+class FuncDefType : public Type {
+	public:
+		FuncDefType() : Type(0, true) {}
+
+		std::string typeName() override {
+			return "FuncDefType";
+		}
+};
