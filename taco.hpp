@@ -15,6 +15,10 @@ class Instruction {
 		virtual std::string typeName() {
 			return "Instruction";
 		}
+
+		virtual void code() {
+			throw_error(1, "emit called on base Instruction");
+		}
 };
 
 enum class OperandKind {
@@ -80,6 +84,8 @@ class BinaryInstr : public Instruction {
 		std::string typeName() override {
 			return "BinaryInstr";
 		}
+		
+		void code() override;
 };
 
 class UnaryInstr : public Instruction {
@@ -98,6 +104,8 @@ class UnaryInstr : public Instruction {
 			printIndentLines(indent);
 			fmt::print("UnaryInstr {} {}\n", unaryOpToStr(op), operandToStr(dest));
 		}
+
+		void code() override;
 };
 
 
@@ -117,6 +125,8 @@ class ReturnInstr : public Instruction {
 		std::string typeName() override {
 			return "ReturnInstr";
 		}
+		
+		void code() override;
 };
 
 class AssignmentInstr : public Instruction {
@@ -137,6 +147,7 @@ class AssignmentInstr : public Instruction {
 		std::string typeName() override {
 			return "AssignmentInstr";
 		}
+		void code() override;
 };
 
 class Label : public Instruction {
@@ -159,6 +170,8 @@ class Label : public Instruction {
 		std::string typeName() override {
 			return fmt::format("Label");
 		}
+
+		void code() override;
 };
 
 class JumpInstr : public Instruction {
@@ -175,6 +188,8 @@ class JumpInstr : public Instruction {
 		std::string typeName() override {
 			return "JumpInstr";
 		}
+
+		void code() override;
 };
 
 class JumpIfTrueInstr : public JumpInstr {
@@ -193,6 +208,8 @@ class JumpIfTrueInstr : public JumpInstr {
 		std::string typeName() override {
 			return "JumpIfTrueInstr";
 		}
+
+		void code() override;
 };
 
 class JumpIfFalseInstr : public JumpInstr {
@@ -211,6 +228,8 @@ class JumpIfFalseInstr : public JumpInstr {
 		std::string typeName() override {
 			return "JumpIfFalseInstr";
 		}
+
+		void code() override;
 };
 
 Label* newLocalLabel(std::string text);
@@ -232,6 +251,7 @@ class FuncPrologueInstr : public Instruction {
 		std::string typeName() override {
 			return "FuncPrologueInstr";
 		}
+		void code() override;
 };
 
 class FuncEpilogueInstr : public Instruction {
@@ -248,6 +268,7 @@ class FuncEpilogueInstr : public Instruction {
 		std::string typeName() override {
 			return "FuncEpilogueInstr";
 		}
+		void code() override;
 };
 
 class CallInstr : public Instruction {
@@ -264,6 +285,7 @@ class CallInstr : public Instruction {
 		std::string typeName() override {
 			return "CallInstr";
 		}
+		void code() override;
 };
 
 class LoadArg : public Instruction {
@@ -281,6 +303,8 @@ class LoadArg : public Instruction {
 		std::string typeName() override {
 			return "LoadArg";
 		}
+
+		void code() override;
 };
 
 class SaveRet : public Instruction {
@@ -297,6 +321,7 @@ class SaveRet : public Instruction {
 		std::string typeName() override {
 			return "SaveRet";
 		}
+		void code() override;
 };
 
 class SaveArg : public Instruction {
@@ -314,4 +339,6 @@ class SaveArg : public Instruction {
 		std::string typeName() override {
 			return "SaveArg";
 		}
+
+		void code() override;
 };

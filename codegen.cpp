@@ -21,21 +21,7 @@ static void emit(std::string instr);
 static void emitni(std::string instr); // no indent
 static void emitProgramEnd();
 static void emitProgramStart();
-static void emitReturn(ReturnInstr* instr);
-static void emitBinaryInstr(BinaryInstr* instr);
-static void emitAssignment(AssignmentInstr* instr);
 static std::string operandText(const Operand& operand);
-static void emitJumpIfTrueInstr(JumpIfTrueInstr* instr);
-static void emitJumpIfFalseInstr(JumpIfFalseInstr* instr);
-static void emitLabel(Label* instr);
-static void emitJump(JumpInstr* instr);
-static void emitUnaryInstr(UnaryInstr* instr);
-static void emitFuncPrologueInstr(FuncPrologueInstr* instr);
-static void emitFuncEpilogueInstr(FuncEpilogueInstr* instr);
-static void emitCallInstr(CallInstr* instr);
-static void emitSaveRet(SaveRet* instr);
-static void emitLoadArg(LoadArg* instr);
-static void emitSaveArg(SaveArg* instr);
 
 std::ofstream output;
 
@@ -44,10 +30,15 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode*
 	// TODO: have it use the user-defined output name
 	(void)ast;
 	(void) fileName;
+	int call = 0;
+
 	if (std::filesystem::exists("out.s"))
-		system("rm out.s");
+		call = system("rm out.s");
+	if (call != 0) throw_error(call, "'rm out.s' didn't return 0");
+	
 	if (std::filesystem::exists("out"))
-		system("rm out");
+		call = system("rm out");
+	if (call != 0) throw_error(call, "'rm out' didn't return 0");
 
 	std::string outputFilename = "out.s";
 	output.open(outputFilename);
@@ -56,57 +47,7 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode*
 	
 	for (Instruction* i : ir)
 	{
-		if (auto* instr = dynamic_cast<ReturnInstr*>(i)) {
-			emitReturn(instr);
-		}
-		else if (auto* instr = dynamic_cast<BinaryInstr*>(i)) {
-			emitBinaryInstr(instr);
-		}
-		else if (auto* instr = dynamic_cast<UnaryInstr*>(i)) {
-			emitUnaryInstr(instr);
-		}
-		else if (auto* instr = dynamic_cast<AssignmentInstr*>(i)) {
-			emitAssignment(instr);
-		}
-		else if (auto* instr = dynamic_cast<JumpIfTrueInstr*>(i)) {
-			emitJumpIfTrueInstr(instr);
-		}
-		else if (auto* instr = dynamic_cast<JumpIfFalseInstr*>(i)) {
-			emitJumpIfFalseInstr(instr);
-		}
-		else if (auto* instr = dynamic_cast<JumpInstr*>(i)) {
-			emitJump(instr);
-		}
-		else if (auto* instr = dynamic_cast<Label*>(i)) {
-			emitLabel(instr);
-		}
-		else if (auto* instr = dynamic_cast<FuncPrologueInstr*>(i))
-		{
-			emitFuncPrologueInstr(instr);
-		}
-		else if (auto* instr = dynamic_cast<FuncEpilogueInstr*>(i))
-		{
-			emitFuncEpilogueInstr(instr);
-		}
-		else if (auto* instr = dynamic_cast<CallInstr*>(i))
-		{
-			emitCallInstr(instr);
-		}
-		else if (auto* instr = dynamic_cast<SaveRet*>(i))
-		{
-			emitSaveRet(instr);
-		}
-		else if (auto* instr = dynamic_cast<LoadArg*>(i))
-		{
-			emitLoadArg(instr);
-		}
-		else if (auto* instr = dynamic_cast<SaveArg*>(i))
-		{
-			emitSaveArg(instr);
-		}
-		else {
-			throw_error(1, fmt::format("No rule for instruction type {}", i->typeName()));
-		}
+		i->code();
 	}
 	
 	emitProgramEnd();
@@ -149,17 +90,17 @@ static void emitProgramEnd()
 	emitni(str);
 }
 
-static void emitReturn(ReturnInstr* instr)
+void ReturnInstr::code()
 {
 	emit("");
-	if (instr->operand.kind == OperandKind::Immediate) {
-		emit(fmt::format("mov eax, {}", instr->operand.val));
+	if (this->operand.kind == OperandKind::Immediate) {
+		emit(fmt::format("mov eax, {}", this->operand.val));
 	}
-	else if (instr->operand.kind == OperandKind::Temp) {
-		emit(fmt::format("mov eax, [rbp {}]", instr->operand.offset));
+	else if (this->operand.kind == OperandKind::Temp) {
+		emit(fmt::format("mov eax, [rbp {}]", this->operand.offset));
 	}
-	else if (instr->operand.kind == OperandKind::Variable) {
-		emit(fmt::format("mov eax, [rbp {}]", instr->operand.offset));
+	else if (this->operand.kind == OperandKind::Variable) {
+		emit(fmt::format("mov eax, [rbp {}]", this->operand.offset));
 	}
 	else {
 		throw_error(1, "emitReturn: missing rule");
@@ -186,19 +127,19 @@ static std::string operandText(const Operand& operand)
 	}
 }
 
-static void emitBinaryInstr(BinaryInstr* instr)
+void BinaryInstr::code()
 {
-	std::string left = operandText(instr->left);
-	std::string right = operandText(instr->right);
-	std::string dest = operandText(instr->dest);
+	std::string left = operandText(this->left);
+	std::string right = operandText(this->right);
+	std::string dest = operandText(this->dest);
 
-	switch(instr->op)
+	switch(this->op)
 	{
 		case BinaryOp::ADD:
 		case BinaryOp::SUB:
 		case BinaryOp::MUL:
 			emit(fmt::format("mov r10d, {}", left));
-			emit(fmt::format("{} r10d, {}", binaryOpToAsm(instr->op), right));
+			emit(fmt::format("{} r10d, {}", binaryOpToAsm(this->op), right));
 			emit(fmt::format("mov {}, r10d", dest));
 			break;
 		case BinaryOp::LESS_THAN:
@@ -209,7 +150,7 @@ static void emitBinaryInstr(BinaryInstr* instr)
 		case BinaryOp::EQUAL_TO:
 			emit(fmt::format("mov r10d, {}", left));
 			emit(fmt::format("cmp r10d, {}", right));
-			emit(fmt::format("{} r10b", binaryOpToAsm(instr->op)));
+			emit(fmt::format("{} r10b", binaryOpToAsm(this->op)));
 			emit(fmt::format("movzx r10d, r10b"));
 			emit(fmt::format("mov {}, r10d", dest));
 			break;
@@ -219,7 +160,7 @@ static void emitBinaryInstr(BinaryInstr* instr)
 		case BinaryOp::DIV:
 		default:
 			throw_error(1, fmt::format("emitBinaryInstr: No rule for {}",
-									   binaryOpToStr(instr->op)));
+									   binaryOpToStr(this->op)));
 	}
 }
 
@@ -254,22 +195,22 @@ static std::string binaryOpToAsm(BinaryOp op)
 	}
 }
 
-static void emitAssignment(AssignmentInstr* instr)
+void AssignmentInstr::code()
 {
-	switch (instr->src.kind)
+	switch (this->src.kind)
 	{
 		case OperandKind::Immediate:
-			emit(fmt::format("mov DWORD PTR [rbp {}], {}", instr->dest.offset, instr->src.val));
+			emit(fmt::format("mov DWORD PTR [rbp {}], {}", this->dest.offset, this->src.val));
 			break;
 
 		case OperandKind::Temp:
-			emit(fmt::format("mov r10d, [rbp {}]", instr->src.offset));
-			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
+			emit(fmt::format("mov r10d, [rbp {}]", this->src.offset));
+			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", this->dest.offset));
 			break;
 		
 		case OperandKind::Variable:
-			emit(fmt::format("mov r10d, [rbp {}]", instr->src.offset));
-			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", instr->dest.offset));
+			emit(fmt::format("mov r10d, [rbp {}]", this->src.offset));
+			emit(fmt::format("mov DWORD PTR [rbp {}], r10d", this->dest.offset));
 			break;
 		
 		default:
@@ -277,49 +218,49 @@ static void emitAssignment(AssignmentInstr* instr)
 	}
 }
 
-static void emitJumpIfTrueInstr(JumpIfTrueInstr* instr)
+void JumpIfTrueInstr::code()
 {
-	emit(fmt::format("mov r10d, {}", operandText(instr->operand)));
+	emit(fmt::format("mov r10d, {}", operandText(this->operand)));
 	emit(fmt::format("cmp r10d, 0"));
-	emit(fmt::format("jnz {}", instr->label->name));
+	emit(fmt::format("jnz {}", this->label->name));
 }
 
-static void emitJumpIfFalseInstr(JumpIfFalseInstr* instr)
+void JumpIfFalseInstr::code()
 {
-	emit(fmt::format("mov r10d, {}", operandText(instr->operand)));
+	emit(fmt::format("mov r10d, {}", operandText(this->operand)));
 	emit(fmt::format("cmp r10d, 0"));
-	emit(fmt::format("je {}", instr->label->name));
+	emit(fmt::format("je {}", this->label->name));
 }
 
-static void emitLabel(Label* instr)
+void Label::code()
 {
 	emit("");
-	emit(instr->name);
+	emit(this->name);
 }
 
-static void emitJump(JumpInstr* instr)
+void JumpInstr::code()
 {
-	emit(fmt::format("jmp {}", instr->label->name));
+	emit(fmt::format("jmp {}", this->label->name));
 }
 
 // The dest of a unary instruction should always be a temporary register.
-static void emitUnaryInstr(UnaryInstr* instr)
+void UnaryInstr::code()
 {
-	assert(instr->dest.kind != OperandKind::Immediate);
+	assert(this->dest.kind != OperandKind::Immediate);
 
-	switch (instr->op)
+	switch (this->op)
 	{
 		case UnaryOp::NEGATE:
-			emit(fmt::format("mov r10d, {}", operandText(instr->src)));
+			emit(fmt::format("mov r10d, {}", operandText(this->src)));
 			emit("neg r10d");
-			emit(fmt::format("mov {}, r10d", operandText(instr->dest)));
+			emit(fmt::format("mov {}, r10d", operandText(this->dest)));
 			break;
 		case UnaryOp::LOGICAL_NOT:
-			emit(fmt::format("mov r10d, {}", operandText(instr->src)));
+			emit(fmt::format("mov r10d, {}", operandText(this->src)));
 			emit("cmp r10d, 0");
 			emit("sete r10b");
 			emit("movzx r10d, r10b");
-			emit(fmt::format("mov {}, r10d", operandText(instr->dest)));
+			emit(fmt::format("mov {}, r10d", operandText(this->dest)));
 			break;
 		default:
 			throw_error(1, "emitUnaryInstr: invalid Unary Instruction");
@@ -327,34 +268,32 @@ static void emitUnaryInstr(UnaryInstr* instr)
 	
 }
 
-static void emitFuncPrologueInstr(FuncPrologueInstr* instr)
+void FuncPrologueInstr::code()
 {
-	emitni(instr->name->def()->name);
+	emitni(this->name->def()->name);
 	emit("push rbp");
 	emit("mov rbp, rsp");
-	emit(fmt::format("sub rsp, {}", abs(instr->frameSize)));	
+	emit(fmt::format("sub rsp, {}", this->frameSize));
 }
 
-static void emitFuncEpilogueInstr(FuncEpilogueInstr* instr)
+void FuncEpilogueInstr::code()
 {
-	(void)instr;
 	emit("");
 }
 
-static void emitCallInstr(CallInstr* instr)
+void CallInstr::code()
 {
-	emit(fmt::format("call {}", instr->name));
+	emit(fmt::format("call {}", this->name));
 }
 
-static void emitSaveRet(SaveRet* instr)
+void SaveRet::code()
 {
-	emit(fmt::format("mov {}, eax", operandText(instr->dest)));
+	emit(fmt::format("mov {}, eax", operandText(this->dest)));
 }
 
 static std::string getArgRegister(size_t index, int size)
 {
 	std::string reg;
-	fmt::print("size: {}\n\n", size);
 	switch (size)
 	{
 		case 4:
@@ -389,14 +328,14 @@ static std::string getArgRegister(size_t index, int size)
 	return reg;
 }
 
-static void emitLoadArg(LoadArg* instr)
+void LoadArg::code()
 {
-	emit(fmt::format("mov {}, {}", getArgRegister(instr->index, instr->src.size),
-								   operandText(instr->src)));
+	emit(fmt::format("mov {}, {}", getArgRegister(this->index, this->src.size),
+								   operandText(this->src)));
 }
 
-static void emitSaveArg(SaveArg* instr)
+void SaveArg::code()
 {
-	emit(fmt::format("mov {}, {}", operandText(instr->dest),
-								   getArgRegister(instr->index, instr->dest.size)));
+	emit(fmt::format("mov {}, {}", operandText(this->dest),
+								   getArgRegister(this->index, this->dest.size)));
 }

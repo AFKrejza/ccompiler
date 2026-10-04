@@ -32,6 +32,8 @@ class Parameter {
 		}
 };
 
+class ScopeNode;
+
 class Node {
 	public:
 		int line;
@@ -48,14 +50,26 @@ class Node {
 			(void) indent;
 		}
 
-		virtual void killChildren() {}
-
 		virtual std::string typeName() {
 			return "Node";
+		}
+
+		virtual void eval(ScopeNode* parent)
+		{
+			(void)parent;
+			throw_error(1, "eval called on base Node");
+		}
+		virtual void gen(ScopeNode* parent) 
+		{
+			(void)parent;
+			throw_error(1, "gen called on base Node");
 		}
 		
 		// TODO: add destructors to all classes
 		virtual ~Node() = default;
+
+		
+		virtual void killChildren() {}
 };
 
 class VoidNode : public Node {
@@ -75,6 +89,8 @@ class VoidNode : public Node {
 		std::string typeName() {
 			return "VoidNode";
 		}
+
+		void gen(ScopeNode* parent) override { (void)parent; }
 };
 
 class FuncDefNode;
@@ -93,7 +109,6 @@ struct Attrs {
 		func(func) {}
 };
 
-class ScopeNode;
 class GodNode;
 
 class StatementNode : public Node {
@@ -148,7 +163,7 @@ class ScopeNode : public StatementNode {
 		}
 
 		// for changing parent function
-		int changeFrameSize(ScopeNode* parent, int size);
+		virtual int changeFrameSize(int size);
 };
 
 class GodNode : public ScopeNode {
@@ -170,6 +185,12 @@ class GodNode : public ScopeNode {
 		std::string typeName() override {
 			return "GodNode";
 		}
+
+		int changeFrameSize(int size) override {
+			(void)parent; (void)size;
+			throw_error(1, fmt::format("Attempt to change frame size of {}", this->typeName()));
+			exit(1);
+		}
 };
 
 class FuncDefNode : public ScopeNode {
@@ -177,7 +198,6 @@ class FuncDefNode : public ScopeNode {
 		std::string name;
 		Type *returnType;
 		std::vector<Parameter> paramList;
-		int frameSize = 0;
 
 		FuncDefNode(int line,
 					ScopeNode* parent,
@@ -215,18 +235,25 @@ class FuncDefNode : public ScopeNode {
 		std::string typeName() override {
 			return "FuncDefNode";
 		}
+
+		void gen(ScopeNode* parent) override;
+
+		int getFrameSize() { return this->frameSize; }
+
+		int changeFrameSize(int size) override {
+			if (size < 0)
+				throw_error(1, fmt::format("Size cannot be negative. "
+											  "In function starting on line {}", this->line));
+			return -(this->frameSize += size);
+		}
+
+	private:
+		int frameSize = 0;
 };
 
-inline int ScopeNode::changeFrameSize(ScopeNode* parent, int size)
+inline int ScopeNode::changeFrameSize(int size)
 {
-	if (auto* func = dynamic_cast<FuncDefNode*>(parent))
-	{
-		return func->frameSize -= size;
-	}
-	else if (dynamic_cast<GodNode*>(parent)) {
-		throw_error(1, "Global variables aren't supported yet");
-	}
-	return this->changeFrameSize(parent->parent, size);
+	return this->parent->changeFrameSize(size);
 }
 
 BinaryOp TokenTypeToBinaryOp(TokenType op);
@@ -262,6 +289,8 @@ class BinaryOpNode : public Node {
 			right->killChildren();
 			delete this;
 		}
+
+		void eval(ScopeNode* parent) override;
 };
 
 UnaryOp TokenTypeToUnaryOp(TokenType op);
@@ -295,6 +324,8 @@ class UnaryOpNode : public Node {
 			expression->killChildren();
 			delete this;
 		}
+
+		void eval(ScopeNode* parent) override;
 };
 
 class ImmediateNode : public Node {
@@ -340,6 +371,8 @@ class VariableNode : public Node {
 			printIndentLines(indent);
 			fmt::print("VariableNode {}\n", name);
 		}
+
+		void eval(ScopeNode* parent) override;
 };
 
 class ReturnNode : public StatementNode {
@@ -376,6 +409,9 @@ class ReturnNode : public StatementNode {
 
 			return findParentFunction(parent->parent);
 		}
+
+		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class AssignmentNode : public Node {
@@ -402,6 +438,9 @@ class AssignmentNode : public Node {
 			print(indent);
 			expression->printChildren(indent + 1);
 		}
+
+		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class DeclarationNode : public Node {
@@ -434,6 +473,9 @@ class DeclarationNode : public Node {
 			if (assignment != nullptr)
 				assignment->expression->printChildren(indent + 1);
 		}
+
+		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class ElseNode : public ScopeNode {
@@ -456,6 +498,8 @@ class ElseNode : public ScopeNode {
 		std::string typeName() override {
 			return "ElseNode";
 		}
+
+		void eval(ScopeNode* parent) override;
 };
 
 class IfNode : public ScopeNode {
@@ -486,6 +530,9 @@ class IfNode : public ScopeNode {
 		std::string typeName() override {
 			return "IfNode";
 		}
+
+		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class LoopNode : public ScopeNode {
@@ -544,6 +591,9 @@ class WhileNode : public LoopNode {
 		std::string typeName() override {
 			return "WhileNode";
 		}
+
+		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class DoWhileNode : public LoopNode {
@@ -566,6 +616,9 @@ class DoWhileNode : public LoopNode {
 		std::string typeName() override {
 			return "DoWhileNode";
 		}
+
+		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class ForNode : public LoopNode {
@@ -606,6 +659,9 @@ class ForNode : public LoopNode {
 		std::string typeName() override {
 			return "ForNode";
 		}
+
+		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class BreakNode : public StatementNode {
@@ -635,6 +691,8 @@ class BreakNode : public StatementNode {
 				return this->findParentLoop(parent->parent);
 		}
 
+		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 // basically a copy of BreakNode, should combine em
@@ -665,6 +723,8 @@ class ContinueNode : public StatementNode {
 				return this->findParentLoop(parent->parent);
 		}
 
+		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class CallNode : public StatementNode {
@@ -688,4 +748,6 @@ class CallNode : public StatementNode {
 		std::string typeName() override {
 			return "CallNode";
 		}
+
+		void eval(ScopeNode* parent) override;
 };

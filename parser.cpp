@@ -230,6 +230,7 @@ static Node *parseFactor(ScopeNode* parent)
 	{
 		factor = new ImmediateNode(token().line, std::get<int>(token().literal));
 		advance();
+		return factor;
 	}
 	else if (token().tokenType == IDENTIFIER)
 	{
@@ -240,6 +241,7 @@ static Node *parseFactor(ScopeNode* parent)
 			factor = new VariableNode(token().line, token().lexeme);
 			advance();
 		}
+		return factor;
 	}
 	else if (token().tokenType == OPEN_PARENTHESES)
 	{
@@ -247,6 +249,7 @@ static Node *parseFactor(ScopeNode* parent)
 		factor = parseExpression(parent);
 		assert(token().tokenType == CLOSED_PARENTHESES);
 		advance();
+		return factor;
 	}
 	else {
 		throw_error_line(1, 
@@ -254,8 +257,8 @@ static Node *parseFactor(ScopeNode* parent)
 						 fmt::format("Invalid factor: '{}', type '{}'", 
 							token().lexeme, 
 							token().tokenTypeToStr(token().tokenType)));
+		exit(1);
 	}
-	return factor;
 }
 
 static Node *parseFuncDef(GodNode* parent)
@@ -298,6 +301,8 @@ static std::vector<Parameter> parseParamList()
 	return paramList;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
 static std::vector<Node*> parseStatements(bool isCompound, ScopeNode* parent)
 {
 	if (isCompound) {
@@ -314,66 +319,63 @@ static std::vector<Node*> parseStatements(bool isCompound, ScopeNode* parent)
 			return body;
 		}
 
-		if (token().tokenType == RETURN)
+		switch (token().tokenType)
 		{
-			auto *retNode = new ReturnNode(token().line, parent);
-			advance();
-			retNode->expression = parseExpression(parent);
-			assert(token().tokenType == SEMICOLON);
-			advance();
-			body.push_back(retNode);
-		}
-		else if (token().tokenType == INT &&
-				 peek(1).tokenType == IDENTIFIER)
-		{
-			body.push_back(parseDeclaration(parent));
-			assert(token().tokenType == SEMICOLON);
-			advance();
-		}
-		else if (token().tokenType == IDENTIFIER &&
-				 peek(1).tokenType == ASSIGNMENT)
-		{
-			body.push_back(parseAssignment(parent));
-			assert(token().tokenType == SEMICOLON);
-			advance();
-		}
-		else if (token().tokenType == IF)
-		{
-			body.push_back(parseIf(parent));
-		}
-		else if (token().tokenType == ELSE)
-		{
-			throw_error_line(1, token().line, "Else ain't got no preceding if");
-		}
-		else if (token().tokenType == WHILE)
-		{
-			body.push_back(parseWhile(parent));
-		}
-		else if (token().tokenType == BREAK)
-		{
-			body.push_back(new BreakNode(token().line, parent));
-			assert(peek().tokenType == SEMICOLON);
-			advance(2);
-		}
-		else if (token().tokenType == CONTINUE)
-		{
-			body.push_back(new ContinueNode(token().line, parent));
-			assert(peek().tokenType == SEMICOLON);
-			advance(2);
-		}
-		else if (token().tokenType == DO)
-		{
-			body.push_back(parseDoWhile(parent));
-		}
-		else if (token().tokenType == FOR)
-		{
-			body.push_back(parseFor(parent));
-		}
-		else {
-			throw_error_line(1, 
-							 token().line, 
-							 fmt::format("parseStatements failure to parse {}", 
-							 token().tokenTypeToStr(token().tokenType)));
+			ReturnNode* retNode;
+			case RETURN:
+				retNode = new ReturnNode(token().line, parent);
+				advance();
+				retNode->expression = parseExpression(parent);
+				assert(token().tokenType == SEMICOLON);
+				advance();
+				body.push_back(retNode);
+				break;
+			case IF:
+				body.push_back(parseIf(parent));
+				break;
+			case ELSE:
+				throw_error_line(1, token().line, "Else ain't got no preceding if");
+				break;
+			case WHILE:
+				body.push_back(parseWhile(parent));
+				break;
+			case BREAK:
+				body.push_back(new BreakNode(token().line, parent));
+				assert(peek().tokenType == SEMICOLON);
+				advance(2);
+				break;
+			case CONTINUE:
+				body.push_back(new ContinueNode(token().line, parent));
+				assert(peek().tokenType == SEMICOLON);
+				advance(2);
+				break;
+			case DO:
+				body.push_back(parseDoWhile(parent));
+				break;
+			case FOR:
+				body.push_back(parseFor(parent));
+				break;
+			default:
+				if (token().tokenType == INT &&
+					peek(1).tokenType == IDENTIFIER)
+				{
+					body.push_back(parseDeclaration(parent));
+					assert(token().tokenType == SEMICOLON);
+					advance();
+				}
+				else if (token().tokenType ==IDENTIFIER &&
+						 peek(1).tokenType == ASSIGNMENT)
+				{
+					body.push_back(parseAssignment(parent));
+					assert(token().tokenType == SEMICOLON);
+					advance();
+				}
+				else {
+					throw_error_line(1, 
+									 token().line, 
+									 fmt::format("parseStatements failure to parse {}", 
+									 token().tokenTypeToStr(token().tokenType)));
+				}
 		}
 
 		if (!isCompound)
@@ -381,6 +383,7 @@ static std::vector<Node*> parseStatements(bool isCompound, ScopeNode* parent)
 	}
 	return body;
 }
+#pragma GCC diagnostic pop
 
 static Type *parseType()
 {

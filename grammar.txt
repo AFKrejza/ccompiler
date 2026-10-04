@@ -36,7 +36,7 @@ Terminals: type, IDENTIFIER, INTEGER
 <additive>		= <term>		{ ("+" | "-") <term> }
 <term>			= <unary>		{ "*" <unary> }
 <unary>			= <unop> <unary> | <factor>
-<unop>			= "-" | "!"		// TODO: add ~ +
+<unop>			= "-" | "!"
 <factor>		= INTEGER | <call> | IDENTIFIER | "(" <expression> ")"
 <call>			= IDENTIFIER "(" <arguments> ")"
 <arguments>		= [ <expression> { "," <expression }  ]

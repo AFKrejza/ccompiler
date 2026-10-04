@@ -13,20 +13,12 @@
 #include "error.hpp"
 #include "utils.hpp"
 
-static void evalDeclaration(DeclarationNode* node, ScopeNode* parent);
 static Type* evalType(Node *node, ScopeNode* parent);
 static bool typesEqual(Type *first, Type *second);
-static void evalAssignment(AssignmentNode* node, ScopeNode* parent);
-static void evalReturn(ReturnNode* node, ScopeNode* parent);
-static void evalIf(IfNode* node, ScopeNode* parent);
-static void evalElse(StatementNode* node, ScopeNode* parent, int index);
 static void evalStatements(StatementNode* block, ScopeNode* parent);
 static void evalLoop(LoopNode* node);
-static void evalBreak(BreakNode* node);
-static void evalContinue(ContinueNode* node);
 static bool evalExpression(Node* expr, ScopeNode* parent);
 static void evalFunction(FuncDefNode* func);
-static void evalCall(CallNode* node, ScopeNode* parent);
 
 GodNode* program;
 
@@ -72,54 +64,7 @@ static void evalStatements(StatementNode* block, ScopeNode* parent)
 {
 	for (size_t i = 0; i < block->body.size(); i++)
 	{
-		if (auto* retNode = dynamic_cast<ReturnNode*>(block->body[i]))
-		{
-			evalReturn(retNode, parent);
-		}
-		// TODO: declaration and assignment shouldn't really be here cuz they're
-		// not statements.
-		else if (auto* declNode = dynamic_cast<DeclarationNode*>(block->body[i]))
-		{
-			evalDeclaration(declNode, parent);
-		}
-		else if (auto* asg = dynamic_cast<AssignmentNode*>(block->body[i]))
-		{
-			// check that lvalues exist
-			evalAssignment(asg, parent);
-		}
-		else if (auto* ifs = dynamic_cast<IfNode*>(block->body[i]))
-		{
-			evalIf(ifs, parent);
-		}
-		else if (auto* elses = dynamic_cast<ElseNode*>(block->body[i]))
-		{
-			evalElse(elses, parent, i);
-		}
-		else if (auto* whilel = dynamic_cast<WhileNode*>(block->body[i]))
-		{
-			evalLoop(whilel);
-		}
-		else if (auto* doer = dynamic_cast<DoWhileNode*>(block->body[i]))
-		{
-			evalLoop(doer);
-		}
-		else if (auto* forl = dynamic_cast<ForNode*>(block->body[i]))
-		{
-			evalLoop(forl);
-		}
-		else if (auto* breaker = dynamic_cast<BreakNode*>(block->body[i]))
-		{
-			evalBreak(breaker);
-		}
-		else if (auto* conch = dynamic_cast<ContinueNode*>(block->body[i]))
-		{
-			evalContinue(conch);
-		}
-		else {
-			throw_error_line(1, 
-							 block->body[i]->line, 
-							 fmt::format("No rule for node type {}", block->body[i]->typeName()));
-		}
+		block->body[i]->eval(parent);
 	}
 }
 
@@ -129,7 +74,7 @@ bool typesEqual(Type *first, Type *second)
 {
 	// TODO: look into how C manages differently sized integers.
 
-	// could just use switch typeName(), this seems kinda dumb
+	// TODO: perhaps add a equalTo map or switch to each Type?
 	if (dynamic_cast<IntType*>(first) && dynamic_cast<IntType*>(second)) {
 		return true;
 	}
@@ -145,7 +90,6 @@ bool typesEqual(Type *first, Type *second)
 	if (dynamic_cast<FuncDefType*>(first) && dynamic_cast<FuncDefType*>(second)) {
 		return true;
 	}
-	
 	
 	auto *p1 = dynamic_cast<PointerType*>(first);
 	auto *p2 = dynamic_cast<PointerType*>(second);
@@ -197,101 +141,121 @@ static Type* evalType(Node *node, ScopeNode* parent)
 }
 
 // add it to the local scope
-static void evalDeclaration(DeclarationNode* node, ScopeNode* parent)
+void DeclarationNode::eval(ScopeNode* parent)
 {
-	if (node->assignment != nullptr) {
-		node->assignment->type = evalType(node->assignment->expression, parent);
-		if (!typesEqual(node->type, node->assignment->type)) {
-			throw_error_line(1, node->line, "evalDeclaration: Unequal types");
+	if (this->assignment != nullptr) {
+		this->assignment->type = evalType(this->assignment->expression, parent);
+		if (!typesEqual(this->type, this->assignment->type)) {
+			throw_error_line(1, this->line, "evalDeclaration: Unequal types");
 		}
 	}
 
 	// check if not already declared in this scope
-	if (parent->scope.count(node->name))
+	if (parent->scope.count(this->name))
 	{
-		Attrs attrs = parent->getSymbol(node->name, node->line, parent);
+		Attrs attrs = parent->getSymbol(this->name, this->line, parent);
 		throw_error_line(1, 
-						 node->line, 
+						 this->line, 
 						 fmt::format("'{}' was redeclared. First declared on line {}", 
-									 node->name, 
+									 this->name, 
 									 attrs.line));
 	}
 
-	int offset = parent->changeFrameSize(parent, node->type->size);
-	parent->scope.insert({node->name, Attrs{node->type, offset, node->line}});
+	int offset = parent->changeFrameSize(this->type->size);
+	parent->scope.insert({this->name, Attrs{this->type, offset, this->line}});
 }
 
-static void evalAssignment(AssignmentNode* node, ScopeNode* parent)
+void AssignmentNode::eval(ScopeNode* parent)
 {
-	// TODO: verify that the left side is actually an lvalue
+	// TODO: verify that the left side is actually an lvalue & check that lvalues exist
 	
-	Attrs var = parent->getSymbol(node->name, node->line, parent);
-	node->expression->type = evalType(node->expression, parent);
+	Attrs var = parent->getSymbol(this->name, this->line, parent);
+	this->expression->type = evalType(this->expression, parent);
 
-	if (!typesEqual(var.type, node->expression->type)) {
-		throw_error_line(1, node->line, "evalAssignment: Unequal types");
+	if (!typesEqual(var.type, this->expression->type)) {
+		throw_error_line(1, this->line, "evalAssignment: Unequal types");
 	}
-
 }
 
-static void evalReturn(ReturnNode* node, ScopeNode* parent)
+void ReturnNode::eval(ScopeNode* parent)
 {
-	evalExpression(node->expression, parent);
-	FuncDefNode* func = node->findParentFunction(node->parent);
+	evalExpression(this->expression, parent);
+	FuncDefNode* func = this->findParentFunction(this->parent);
 	if (func == nullptr)
 		throw_error(1, "Return has no parent function");
 
-	Type* exprType = evalType(node->expression, func);
+	Type* exprType = evalType(this->expression, func);
 	if (!typesEqual(func->returnType, exprType))
-		throw_error_line(1, node->line, "Invalid return type");
+		throw_error_line(1, this->line, "Invalid return type");
 	
-	node->expression->type = exprType;
+	this->expression->type = exprType;
 }
 
-static void evalIf(IfNode* node, ScopeNode* parent)
+void IfNode::eval(ScopeNode* parent)
 {
-	evalExpression(node->expression, node);
-	evalStatements(node, parent);
+	evalExpression(this->expression, this);
+	evalStatements(this, parent);
 }
 
-static void evalElse(StatementNode* node, ScopeNode* parent, int index)
+void ElseNode::eval(ScopeNode* parent)
 {
-	if (index == 0 || !dynamic_cast<IfNode*>(parent->body.at(index -1)))
+	if (parent->body.size() == 0 ||
+		!dynamic_cast<IfNode*>(parent->body.at(parent->body.size() -2)))
 	{
-		throw_error_line(1, node->line, "Missing if statement before else");
+		throw_error_line(1, this->line, "Missing if statement before else");
 	}
-	evalStatements(node, parent);
+	evalStatements(this, parent);
 }
 
-static void evalLoop(LoopNode* node)
+void WhileNode::eval(ScopeNode* parent)
 {
-	if (auto* whilel = dynamic_cast<ForNode*>(node)) {
-		if (!dynamic_cast<VoidNode*>(whilel->prologue)) {
-			evalExpression(whilel->prologue, whilel);
-		}
-		if (!dynamic_cast<VoidNode*>(whilel->epilogue)) {
-			evalExpression(whilel->epilogue, whilel);
-		}
+	(void)parent;
+	evalLoop(this);
+}
+
+void DoWhileNode::eval(ScopeNode* parent)
+{
+	(void)parent;
+	evalLoop(this);
+}
+
+void ForNode::eval(ScopeNode* parent)
+{
+	(void)parent;
+	if (!dynamic_cast<VoidNode*>(this->prologue))
+	{
+		evalExpression(this->prologue, this);
 	}
+	if (!dynamic_cast<VoidNode*>(this->epilogue))
+	{
+		evalExpression(this->epilogue, this);
+	}
+	evalLoop(this);
+}
+
+void evalLoop(LoopNode* node)
+{
 	if (!dynamic_cast<VoidNode*>(node->expression))
 		evalExpression(node->expression, node);
 
 	evalStatements(node, node);
 }
 
-static void evalBreak(BreakNode* node)
+void BreakNode::eval(ScopeNode* parent)
 {
+	(void)parent;
 	// if no ancestor is a loop throw error
-	if (node->findParentLoop(node->parent) == nullptr) {
-		throw_error_line(1, node->line, "Break can only be used in loops");
+	if (this->findParentLoop(this->parent) == nullptr) {
+		throw_error_line(1, this->line, "Break can only be used in loops");
 	}
 }
 
-// again copied
-static void evalContinue(ContinueNode* node)
+// copied, not worth making another class imo
+void ContinueNode::eval(ScopeNode* parent)
 {
-	if (node->findParentLoop(node->parent) == nullptr) {
-		throw_error_line(1, node->line, "Continue can only be used in loops");
+	(void)parent;
+	if (this->findParentLoop(this->parent) == nullptr) {
+		throw_error_line(1, this->line, "Continue can only be used in loops");
 	}
 }
 
@@ -302,38 +266,24 @@ static bool evalExpression(Node* expr, ScopeNode* parent)
 	if (dynamic_cast<ImmediateNode*>(expr)) {
 		return true;
 	}
-	else if (auto* binOp = dynamic_cast<BinaryOpNode*>(expr))
-	{
-		evalExpression(binOp->left, parent);
-		evalExpression(binOp->right, parent);
-	}
-	else if (auto* unOp = dynamic_cast<UnaryOpNode*>(expr))
-	{
-		evalExpression(unOp->expression, parent);
-	}
-	else if (auto* var = dynamic_cast<VariableNode*>(expr))
-	{
-		parent->getSymbol(var->name, var->line, parent);
-	}
-	else if (auto* declNode = dynamic_cast<DeclarationNode*>(expr))
-	{
-		evalDeclaration(declNode, parent);
-	}
-	else if (auto* asg = dynamic_cast<AssignmentNode*>(expr))
-	{
-		// check that lvalues exist
-		evalAssignment(asg, parent);
-	}
-	else if (auto* call = dynamic_cast<CallNode*>(expr))
-	{
-		evalCall(call, parent);
-	}
-	else {
-		throw_error_line(1, 
-						 expr->line, 
-						 fmt::format("genExpression: no rule for {}", expr->typeName()));
-	}
+	else expr->eval(parent);
 	return true;
+}
+
+void VariableNode::eval(ScopeNode* parent)
+{
+	parent->getSymbol(this->name, this->line, parent);
+}
+
+void BinaryOpNode::eval(ScopeNode* parent)
+{
+	evalExpression(this->left, parent);
+	evalExpression(this->right, parent);
+}
+
+void UnaryOpNode::eval(ScopeNode* parent)
+{
+	evalExpression(this->expression, parent);
 }
 
 static void evalFunction(FuncDefNode* func)
@@ -341,7 +291,7 @@ static void evalFunction(FuncDefNode* func)
 	// add parameters to local scope
 	for (Parameter param : func->paramList)
 	{
-		int offset = func->changeFrameSize(func, param.type->size);
+		int offset = func->changeFrameSize(param.type->size);
 		func->scope.insert({param.name, Attrs{param.type, offset, param.line}});
 	}
 	// TODO: unused variable & parameter check
@@ -349,39 +299,39 @@ static void evalFunction(FuncDefNode* func)
 	evalStatements(func, func);
 }
 
-static void evalCall(CallNode* node, ScopeNode* parent)
+void CallNode::eval(ScopeNode* parent)
 {
-	Attrs attrs = program->getSymbol(node->name, node->line, program);
+	Attrs attrs = program->getSymbol(this->name, this->line, program);
 
 	auto* funcType = new FuncDefType{};
 	if (!typesEqual(funcType, attrs.type))
 	{
 		throw_error_line(1,
-						 node->line,
+						 this->line,
 						 fmt::format("Call to symbol {} which is not a {} but a {}",
-						 node->name, funcType->typeName(), attrs.type->typeName()));
+						 this->name, funcType->typeName(), attrs.type->typeName()));
 	}
 
 	FuncDefNode* func = attrs.func;
 
-	if (node->args.size() != func->paramList.size())
+	if (this->args.size() != func->paramList.size())
 	{
 		throw_error_line(1,
-			node->line,
+			this->line,
 			fmt::format("Invalid number of arguments: got {}, expected {}",
-				node->args.size(), func->paramList.size()));
+				this->args.size(), func->paramList.size()));
 	}
 	
-	for (size_t i = 0; i < node->args.size(); ++i)
+	for (size_t i = 0; i < this->args.size(); ++i)
 	{
-		node->args[i]->type = evalType(node->args[i], parent);
-		if (!typesEqual(node->args[i]->type, func->paramList[i].type))
+		this->args[i]->type = evalType(this->args[i], parent);
+		if (!typesEqual(this->args[i]->type, func->paramList[i].type))
 		{
-			throw_error_line(1, node->args[i]->line,
+			throw_error_line(1, this->args[i]->line,
 				fmt::format("Mismatched argument types: got {}, expected {}",
-					node->args[i]->type->typeName(), func->paramList[i].type->typeName()));
+					this->args[i]->type->typeName(), func->paramList[i].type->typeName()));
 		}
 
-		evalExpression(node->args[i], parent);
+		evalExpression(this->args[i], parent);
 	}
 }

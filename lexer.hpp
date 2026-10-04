@@ -71,8 +71,8 @@ class Token {
 			fmt::print(" Lexeme: {}\n", lexeme);
 			fmt::print("Literal: {}\n", std::visit(LiteralPrintVisitor{}, literal));
 			fmt::print("   Line: {}\n", line);
-			fmt::print(" Column: {}\n", column);
-			fmt::print(" Length: {}\n", length);
+			// fmt::print(" Column: {}\n", column);
+			// fmt::print(" Length: {}\n", length);
 		}
 		
 		// contains all symbols and keywords

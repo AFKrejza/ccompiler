@@ -163,12 +163,15 @@ static std::string preprocess(std::string fileName)
 	preprocessed.append(".i");
 	std::string script = fmt::format("gcc -E -P {}.c -o {}", fileName, preprocessed);
 	fmt::print("{}\n", script);
-	system(script.c_str());
+	int call = system(script.c_str());
+	if (call != 0) throw_error(call, "Preprocessor failure");
 	
 	std::string source = readFile(preprocessed);
 	
 	script = fmt::format("rm {}", preprocessed);
-	system(script.c_str());
+	call = system(script.c_str());
+	if (call != 0) throw_error(call, 
+							   fmt::format("Preprocessor issue deleting file {}", preprocessed));
 
 	return source;
 }

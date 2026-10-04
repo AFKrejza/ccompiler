@@ -1,24 +1,22 @@
 CXX := g++
-CXXFLAGS := -Wall -Werror -Wextra -g
-# -Wpedantic -Wswitch-enum -Wimplicit-fallthrough -Wreturn-type -Wshadow -Wuninitialized
-# -fsanitize=address,undefined
+CXXFLAGS := -Wall -Werror -Wextra -g -Wpedantic -Wreturn-type -Wuninitialized
+ #-fsanitize=address,undefined #-Wimplicit-fallthrough #-Wswitch-enum #-Wshadow
 
 # 	makefile flags:
 # 	-DLEX to print token list
 # 	-DAST to print validated AST
 # 	-DTAC to print TAC IR
 # 	-DASM to print assembly
-MYFLAGS := -DTAC -DAST -DASM #-DLEX # -O2
+MYFLAGS := -DTAC -DAST -DASM #-DLEX #-O2
 LDFLAGS := -lfmt
 
 SOURCES := main.cpp lexer.cpp parser.cpp sema.cpp taco.cpp codegen.cpp
-
 OBJECTS:= $(SOURCES:.cpp=.o)
 
 .PHONY: all clean re
-all: main
+all: rat
 
-main: $(OBJECTS)
+rat: $(OBJECTS)
 	$(CXX) $(OBJECTS) -o $@ $(LDFLAGS)
 
 %.o: %.cpp

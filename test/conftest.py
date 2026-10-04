@@ -1,7 +1,9 @@
 import os
 import pytest
 import subprocess
-import tempfile 
+import tempfile
+
+NAME = "rat"
 
 @pytest.fixture
 def compile_and_run():
@@ -13,7 +15,7 @@ def compile_and_run():
 			path = f.name
 		created.append(path)
 
-		result = subprocess.run(['./main', path], capture_output=True, text=True)
+		result = subprocess.run([f'./{NAME}', path], capture_output=True, text=True)
 		assert result.returncode == 0, f"Compilation failed: {result.stderr}"
 
 		run = subprocess.run(['./a.out'])
@@ -35,7 +37,7 @@ def compile_fail():
 			path = f.name
 		created.append(path)
 
-		result = subprocess.run(['./main', path], capture_output=True, text=True)
+		result = subprocess.run([f'./{NAME}', path], capture_output=True, text=True)
 		assert result.returncode != 0, f"Compilation succeeded when it shouldn't have: {result.stderr}"
 
 		return result.returncode

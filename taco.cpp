@@ -11,19 +11,10 @@
 #include "utils.hpp"
 
 static void emit(Instruction* instr);
-static void genDeclaration(DeclarationNode* node, ScopeNode* parent);
 static Operand genExpression(Node *node, ScopeNode* parent);
-static void genReturn(ReturnNode *node, ScopeNode* parent);
-static void genAssignment(AssignmentNode* node, ScopeNode* parent);
 static void genOr(BinaryOpNode* node, Operand dest, ScopeNode* parent);
 static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent);
 static void genBody(std::vector<Node*> body, ScopeNode* parent);
-static void genIf(IfNode* node, ScopeNode* parent);
-static void genWhile(WhileNode* node);
-static void genDoWhile(DoWhileNode* node);
-static void genFor(ForNode* node);
-static void genBreak(BreakNode* node);
-static void genContinue(ContinueNode* node);
 static Operand genCall(CallNode* node, ScopeNode* parent);
 
 static int current = 0; // temp register
@@ -34,37 +25,7 @@ std::vector<Instruction*> taco(GodNode *program)
 {
 	for (Node* node : program->body)
 	{
-		if (auto* func = dynamic_cast<FuncDefNode*>(node))
-		{
-			auto* prologue = new FuncPrologueInstr(func->name);
-			emit(prologue);
-			size_t index = ir.size() - 1;
-
-			if (func->name == "main")
-			{
-				fmt::print("main pre: {}\n", func->frameSize);
-			}
-
-			for (size_t i = 0; i < func->paramList.size(); i++)
-			{
-				Attrs attrs = func->scope.at(func->paramList[i].name);
-				Operand op = Operand::Variable(func->paramList[i].name,
-											   attrs.offset,
-											   attrs.type->size);
-
-				emit(new SaveArg(i, op));
-			}
-			genBody(func->body, func);
-			func->frameSize = abs(func->frameSize);
-			int pad = func->frameSize % 16;
-			func->frameSize = func->frameSize + 16 - (pad ? pad : 16);
-			static_cast<FuncPrologueInstr*>(ir.at(index))->frameSize = func->frameSize;
-			emit(new FuncEpilogueInstr(func->name));
-			if (func->name == "main")
-			{
-				fmt::print("main: {}\n", func->frameSize);
-			}
-		}
+		node->gen(program);
 	}
 
 	fmt::print("IR generated\n");
@@ -78,38 +39,7 @@ static int newVreg()
 
 static void genStatement(Node* node, ScopeNode* parent)
 {
-	if (auto* ret = dynamic_cast<ReturnNode*>(node)) {
-		genReturn(ret, parent);
-	}
-	else if (auto* decl = dynamic_cast<DeclarationNode*>(node)) {
-		genDeclaration(decl, parent);
-	}
-	else if (auto* assign = dynamic_cast<AssignmentNode*>(node)) {
-		genAssignment(assign, parent);
-	}
-	else if (auto* ifs = dynamic_cast<IfNode*>(node)) {
-		genIf(ifs, parent);
-	}
-	else if (auto* whilel = dynamic_cast<WhileNode*>(node)) {
-		genWhile(whilel);
-	}
-	else if (auto* doWhile = dynamic_cast<DoWhileNode*>(node)) {
-		genDoWhile(doWhile);
-	}
-	else if (auto* forl = dynamic_cast<ForNode*>(node)) {
-		genFor(forl);
-	}
-	else if (auto* breaker = dynamic_cast<BreakNode*>(node)) {
-		genBreak(breaker);
-	}
-	else if (auto* conch = dynamic_cast<ContinueNode*>(node)) {
-		genContinue(conch);
-	}
-	else {
-		throw_error_line(1, 
-						 node->line, 
-						 fmt::format("Taco: no rule for {}", node->typeName()));
-	}
+	node->gen(parent);
 }
 
 static void genBody(std::vector<Node*> body, ScopeNode* parent)
@@ -132,22 +62,25 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 		vreg = Operand::Immediate(n->value);
 	}
 	else if (auto* binOp = dynamic_cast<BinaryOpNode*>(node)) {
-		// TODO: move this and other changeFrameSize to sema.
-		vreg = Operand::Temp(newVreg(), parent->changeFrameSize(parent, 4));
 		if (binOp->op == BinaryOp::LOGICAL_AND ||
 			binOp->op == BinaryOp::LOGICAL_OR) {
-			return vreg;
+			return Operand::Temp(newVreg(), parent->changeFrameSize(4));
 		}
+		
+		Operand left = genExpression(binOp->left, parent);
+		Operand right = genExpression(binOp->right, parent);
+		vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
+
 		auto* binInstr = new BinaryInstr(vreg,
 										 binOp->op,
-										 genExpression(binOp->left, parent),
-										 genExpression(binOp->right, parent));
+										 left,
+										 right);
 
 		emit(binInstr);
 		return vreg;
 	}
 	else if (auto* unOp = dynamic_cast<UnaryOpNode*>(node)) {
-		vreg = Operand::Temp(newVreg(), parent->changeFrameSize(parent, 4));
+		vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
 		Operand src = genExpression(unOp->expression, parent);
 		auto* unInstr = new UnaryInstr(vreg, src, unOp->op);
 		emit(unInstr);
@@ -160,7 +93,6 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 								 variable.type->size);
 	}
 	else if (auto* call = dynamic_cast<CallNode*>(node)) {
-		(void)call;
 		return genCall(call, parent);
 	}
 	else {
@@ -171,11 +103,11 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 	return vreg;
 }
 
-static void genReturn(ReturnNode *node, ScopeNode* parent)
+void ReturnNode::gen(ScopeNode* parent)
 {
-	Operand dest = genExpression(node->expression, parent);
+	Operand dest = genExpression(this->expression, parent);
 
-	if (auto* binOp = dynamic_cast<BinaryOpNode*>(node->expression))
+	if (auto* binOp = dynamic_cast<BinaryOpNode*>(this->expression))
 	{
 		if (binOp->op == BinaryOp::LOGICAL_OR)
 				genOr(binOp, dest, parent);
@@ -265,22 +197,6 @@ std::string operandToStr(Operand operand)
 	}
 }
 
-static void genDeclaration(DeclarationNode* node, ScopeNode* parent)
-{
-	if (node->assignment == nullptr) return;
-	genAssignment(node->assignment, parent);
-}
-
-Label* newLocalLabel(std::string text)
-{
-	for (char c : text) {
-		if (isNumber(c)) throw_error(1, fmt::format("Labels cannot contain numbers!"));
-	}
-	if (text.back() == ':')
-		throw_error(1, fmt::format("newLocalLabel can't receive label definitions"));
-	return new Label(std::string{".L_"}.append(text.append(std::to_string(++labelCount))));
-}
-
 static void genAssignment(AssignmentNode* node, ScopeNode* parent)
 {
 	Attrs variable = parent->getSymbol(node->name, node->line, parent);
@@ -307,7 +223,28 @@ static void genAssignment(AssignmentNode* node, ScopeNode* parent)
 	else {
 		src = genExpression(node->expression, parent);
 		emit(new AssignmentInstr(dest, src));
+	}	
+}
+
+void DeclarationNode::gen(ScopeNode* parent)
+{
+	if (this->assignment == nullptr) return;
+	genAssignment(this->assignment, parent);
+}
+
+Label* newLocalLabel(std::string text)
+{
+	for (char c : text) {
+		if (isNumber(c)) throw_error(1, fmt::format("Labels cannot contain numbers!"));
 	}
+	if (text.back() == ':')
+		throw_error(1, fmt::format("newLocalLabel can't receive label definitions"));
+	return new Label(std::string{".L_"}.append(text.append(std::to_string(++labelCount))));
+}
+
+void AssignmentNode::gen(ScopeNode* parent)
+{
+	genAssignment(this, parent);
 }
 
 static void genOr(BinaryOpNode* node, Operand dest, ScopeNode* parent)
@@ -346,65 +283,56 @@ static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent)
 	emit(cont->def());
 }
 
-static void genIf(IfNode* node, ScopeNode* parent)
+void IfNode::gen(ScopeNode* parent)
 {
 	Label* skip;
-	Operand expr = genExpression(node->expression, node);
+	Operand expr = genExpression(this->expression, this);
 
-	if (node->elseBranch) {
+	if (this->elseBranch) {
 		skip = newLocalLabel("else");
 	}
 	else
 		skip = newLocalLabel("cont");
 
 	emit(new JumpIfFalseInstr(skip, expr));
-	genBody(node->body, node);
+	genBody(this->body, this);
 	emit(skip->def());
 
-	if (node->elseBranch)
-		genBody(node->elseBranch->body, parent);
+	if (this->elseBranch)
+		genBody(this->elseBranch->body, parent);
 }
 
 static void genLoopStatements(std::vector<Node*> block, LoopNode* parent)
 {
 	for (size_t i = 0; i < block.size(); ++i)
 	{
-		if (dynamic_cast<BreakNode*>(block[i]))
-		{
-			emit(new JumpInstr(parent->endLabel));
-		}
-		else if (dynamic_cast<ContinueNode*>(block[i])) {
-			if (auto* forl = dynamic_cast<ForNode*>(parent)) {
-				emit(new JumpInstr(forl->epilogueLabel));
-			}
-			else emit(new JumpInstr(parent->startLabel));
-		}
-		else {
-			genStatement(block[i], parent);
-		}
+		block[i]->gen(parent);
 	}
 }
 
-static void genWhile(WhileNode* node)
+void WhileNode::gen(ScopeNode* parent)
 {
-	emit(node->startLabel->def());
-	Operand expr = genExpression(node->expression, node);
-	emit(new JumpIfFalseInstr(node->endLabel, expr));
-	genLoopStatements(node->body, node);
-	emit(new JumpInstr(node->startLabel));
-	emit(node->endLabel->def());
+	(void)parent;
+	emit(this->startLabel->def());
+	Operand expr = genExpression(this->expression, this);
+	emit(new JumpIfFalseInstr(this->endLabel, expr));
+	genLoopStatements(this->body, this);
+	emit(new JumpInstr(this->startLabel));
+	emit(this->endLabel->def());
 }
 
-static void genDoWhile(DoWhileNode* node)
+void DoWhileNode::gen(ScopeNode* parent)
 {
-	emit(node->startLabel->def());
-	genLoopStatements(node->body, node);
-	Operand expr = genExpression(node->expression, node);
-	emit(new JumpIfTrueInstr(node->startLabel, expr));
-	emit(node->endLabel->def());
+	(void)parent;
+
+	emit(this->startLabel->def());
+	genLoopStatements(this->body, this);
+	Operand expr = genExpression(this->expression, this);
+	emit(new JumpIfTrueInstr(this->startLabel, expr));
+	emit(this->endLabel->def());
 }
 
-static void genFor(ForNode* node)
+void ForNode::gen(ScopeNode* parent)
 {
 	/*
 		prologue
@@ -418,60 +346,47 @@ static void genFor(ForNode* node)
 		epilogue
 		jump .forstart
 		.forend:
-
 	*/
-	if (auto* decl = dynamic_cast<DeclarationNode*>(node->prologue))
-	{
-		genDeclaration(decl, node);
-	}
-	else if (dynamic_cast<VoidNode*>(node->prologue))
-	{}
-	else {
-		genExpression(node->prologue, node);
-	}
-	emit(node->startLabel->def());
+	(void)parent;
 
-	if (!dynamic_cast<VoidNode*>(node->expression)) {
-		Operand expr = genExpression(node->expression, node);
-		emit(new JumpIfFalseInstr(node->endLabel, expr));
-	}
+	this->prologue->gen(this);
+	emit(this->startLabel->def());
 
-	genLoopStatements(node->body, node);
-
-	emit(node->epilogueLabel->def());
-	if (auto* assign = dynamic_cast<AssignmentNode*>(node->epilogue)) {
-		genAssignment(assign, node);
+	if (!dynamic_cast<VoidNode*>(this->expression)) {
+		Operand expr = genExpression(this->expression, this);
+		emit(new JumpIfFalseInstr(this->endLabel, expr));
 	}
-	else if (dynamic_cast<VoidNode*>(node->epilogue)) {}
-	else {
-		Operand expr = genExpression(node->epilogue, node);
-	}
+	genLoopStatements(this->body, this);
+	emit(this->epilogueLabel->def());
 
-	emit(new JumpInstr(node->startLabel));
-	emit(node->endLabel->def());	
+	this->epilogue->gen(this);
+	emit(new JumpInstr(this->startLabel));
+	emit(this->endLabel->def());	
 }
 
-static void genBreak(BreakNode* node)
+void BreakNode::gen(ScopeNode* parent)
 {
-	emit(new JumpInstr(node->findParentLoop(node->parent)->endLabel));
+	(void)parent;
+	emit(new JumpInstr(this->findParentLoop(this->parent)->endLabel));
 }
 
-static void genContinue(ContinueNode* node)
+void ContinueNode::gen(ScopeNode* parent)
 {
+	(void)parent;
 	Label* jmpLabel;
-	LoopNode* parent = node->findParentLoop(node->parent);
-	if (auto* forl = dynamic_cast<ForNode*>(parent)) {
+	LoopNode* parentLoop = this->findParentLoop(this->parent);
+	if (auto* forl = dynamic_cast<ForNode*>(parentLoop)) {
 		jmpLabel = forl->epilogueLabel;
 	}
 	else {
-		jmpLabel = parent->startLabel;
+		jmpLabel = parentLoop->startLabel;
 	}
 	emit(new JumpInstr(jmpLabel));
 }
 
-static Operand genCall(CallNode* node, ScopeNode* parent)
+Operand genCall(CallNode* node, ScopeNode* parent)
 {
-	Operand retReg = Operand::Temp(newVreg(), parent->changeFrameSize(parent, 4));
+	Operand retReg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
 	std::vector<Operand> argRegs;
 
 	for (size_t i = 0; i < node->args.size(); ++i)
@@ -486,4 +401,28 @@ static Operand genCall(CallNode* node, ScopeNode* parent)
 	emit(new CallInstr(node->name)); 
 	emit(new SaveRet(retReg));
 	return retReg;
+}
+
+void FuncDefNode::gen(ScopeNode* parent)
+{
+	(void)parent;
+	emit(new FuncPrologueInstr(this->name));
+	size_t index = ir.size() - 1;
+
+	for (size_t i = 0; i < this->paramList.size(); i++)
+	{
+		Attrs attrs = this->scope.at(this->paramList[i].name);
+		Operand op = Operand::Variable(this->paramList[i].name,
+										attrs.offset,
+										attrs.type->size);
+
+		emit(new SaveArg(i, op));
+	}
+	genBody(this->body, this);
+
+	this->frameSize = abs(this->frameSize);
+	int pad = this->frameSize % 16;
+	this->frameSize = this->frameSize + 16 - (pad ? pad : 16);
+	static_cast<FuncPrologueInstr*>(ir.at(index))->frameSize = this->frameSize;
+	emit(new FuncEpilogueInstr(this->name));
 }
