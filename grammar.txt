@@ -22,13 +22,15 @@ Terminals: type, IDENTIFIER, INTEGER
 <parameter>		= "int" IDENTIFIER
 <functionBody>	=  <compound>
 <statement>		= <ret> | <declaration> | <assignment> | <if> |
-				  <while> | <dowhile> | <for> | "break" | "continue" | <compound>
+				  <while> | <dowhile> | <for> | "break" | "continue" | <compound> |
+				  <expression> ";"
 <compound>		= "{" { <statement> } "}"
 <if>			= "if" "(" <expression> ")" <statement> [ <else> ] // else resolves to nearest if
 <else>			= "else" <statement>
 <ret>			= "return" <expression>
 <declaration>	= "int" IDENTIFIER [ "=" <expression> ]
-<expression>	= <logicalOr>
+<expression>	= <assignment>
+<assignment>	= <logicalOr> [ "=" <assignment> ]
 <logicalOr>		= <logicalAnd>	{ "||" <logicalAnd> }
 <logicalAnd>	= <equality>	{ "&&" <equality> }
 <equality>		= <relational>	{ ( "==" | "!=") <relational> }

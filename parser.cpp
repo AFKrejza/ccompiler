@@ -355,6 +355,10 @@ static std::vector<Node*> parseStatements(bool isCompound, ScopeNode* parent)
 			case FOR:
 				body.push_back(parseFor(parent));
 				break;
+			case INC:
+			case DEC:
+				parseExpression(parent);
+				break;
 			default:
 				if (token().tokenType == INT &&
 					peek(1).tokenType == IDENTIFIER)

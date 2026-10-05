@@ -71,10 +71,22 @@ static void scanToken()
 			addToken(TokenType::SEMICOLON, 1, ";");
 			break;
 		case '+':
-			addToken(TokenType::PLUS, 1, "+");
+			if (peek() == '+') {
+				addToken(TokenType::INC, 2, "++");
+				advance();
+			}
+			else {
+				addToken(TokenType::PLUS, 1, "+");
+			}
 			break;
 		case '-':
-			addToken(TokenType::MINUS, 1, "-");
+			if (peek() == '-') {
+				addToken(TokenType::DEC, 2, "--");
+				advance();
+			}
+			else {
+				addToken(TokenType::MINUS, 1, "-");
+			}
 			break;
 		case '*':
 			addToken(TokenType::ASTERISK, 1, "*");
