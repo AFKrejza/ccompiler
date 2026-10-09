@@ -291,6 +291,7 @@ class BinaryOpNode : public Node {
 		}
 
 		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 UnaryOp TokenTypeToUnaryOp(TokenType op);
@@ -313,7 +314,7 @@ class UnaryOpNode : public Node {
 
 		void print(int indent) override {
 			printIndentLines(indent);
-			fmt::print("{} {}\n", typeName(), unaryOpToStr(op));
+			fmt::print("{} {}\n", this->typeName(), unaryOpToStr(op));
 		}
 
 		std::string typeName() override {
@@ -326,6 +327,7 @@ class UnaryOpNode : public Node {
 		}
 
 		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class ImmediateNode : public Node {
@@ -348,6 +350,9 @@ class ImmediateNode : public Node {
 			printIndentLines(indent);
 			fmt::print("ImmediateNode {}\n", value);
 		}
+
+		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class VariableNode : public Node {
@@ -373,6 +378,7 @@ class VariableNode : public Node {
 		}
 
 		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class ReturnNode : public StatementNode {
@@ -417,13 +423,11 @@ class ReturnNode : public StatementNode {
 class AssignmentNode : public Node {
 	public:
 		std::string name;
-
+		Node* lhs = nullptr;
 		Node* expression = nullptr;
 
-		AssignmentNode(int line, std::string name, Node* expression = nullptr) : Node(line) {
-			this->name = name;
-			this->expression = expression;
-		}
+		AssignmentNode(int line)
+		:	Node(line) {}
 
 		std::string typeName() override {
 			return "AssignmentNode";
@@ -447,16 +451,16 @@ class DeclarationNode : public Node {
 	public:
 		std::string name;
 		Type* type;
-		AssignmentNode* assignment = nullptr;
+		Node* expression = nullptr;
 
 		DeclarationNode(int line,
 						std::string name,
 						Type* type,
-						AssignmentNode* assignment = nullptr) : Node(line)
+						Node* expression = nullptr) : Node(line)
 		{
 			this->name = name;
 			this->type = type;
-			this->assignment = assignment;
+			this->expression = expression;
 		}
 
 		std::string typeName() override {
@@ -470,8 +474,8 @@ class DeclarationNode : public Node {
 
 		void printChildren(int indent) override {
 			print(indent);
-			if (assignment != nullptr)
-				assignment->expression->printChildren(indent + 1);
+			if (expression != nullptr)
+				expression->printChildren(indent + 1);
 		}
 
 		void eval(ScopeNode* parent) override;
@@ -500,6 +504,7 @@ class ElseNode : public ScopeNode {
 		}
 
 		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };
 
 class IfNode : public ScopeNode {
@@ -750,4 +755,5 @@ class CallNode : public StatementNode {
 		}
 
 		void eval(ScopeNode* parent) override;
+		void gen(ScopeNode* parent) override;
 };

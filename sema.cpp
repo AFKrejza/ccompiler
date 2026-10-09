@@ -6,6 +6,7 @@
 */
 
 #include <algorithm>
+#include <assert.h>
 #include <iterator>
 #include <type_traits>
 
@@ -129,6 +130,11 @@ static Type* evalType(Node *node, ScopeNode* parent)
 		Attrs attrs = parent->getSymbol(var->name, var->line, parent);
 		return attrs.type;
 	}
+	else if (auto* var = dynamic_cast<AssignmentNode*>(node))
+	{
+		Attrs attrs = parent->getSymbol(var->name, var->line, parent);
+		return attrs.type;
+	}
 	else if (auto* func = dynamic_cast<CallNode*>(node))
 	{
 		Attrs attrs = program->getSymbol(func->name, func->line, program);
@@ -143,9 +149,9 @@ static Type* evalType(Node *node, ScopeNode* parent)
 // add it to the local scope
 void DeclarationNode::eval(ScopeNode* parent)
 {
-	if (this->assignment != nullptr) {
-		this->assignment->type = evalType(this->assignment->expression, parent);
-		if (!typesEqual(this->type, this->assignment->type)) {
+	if (this->expression != nullptr) {
+		this->expression->type = evalType(this->expression, parent);
+		if (!typesEqual(this->type, this->expression->type)) {
 			throw_error_line(1, this->line, "evalDeclaration: Unequal types");
 		}
 	}
@@ -167,8 +173,6 @@ void DeclarationNode::eval(ScopeNode* parent)
 
 void AssignmentNode::eval(ScopeNode* parent)
 {
-	// TODO: verify that the left side is actually an lvalue & check that lvalues exist
-	
 	Attrs var = parent->getSymbol(this->name, this->line, parent);
 	this->expression->type = evalType(this->expression, parent);
 
@@ -283,12 +287,24 @@ void BinaryOpNode::eval(ScopeNode* parent)
 
 void UnaryOpNode::eval(ScopeNode* parent)
 {
+	if (this->op == UnaryOp::PREINC ||
+		this->op == UnaryOp::POSTINC ||
+		this->op == UnaryOp::PREDEC ||
+		this->op == UnaryOp::POSTDEC)
+	{
+		auto* var = dynamic_cast<VariableNode*>(this->expression);
+		if (!var) {
+			throw_error_line(1, this->line,
+							 fmt::format("Target of {} operator is not a Variable "
+										 "(other lvalues are not supported)",
+										 unaryOpToStr(this->op)));
+		}
+	}
 	evalExpression(this->expression, parent);
 }
 
 static void evalFunction(FuncDefNode* func)
 {
-	// add parameters to local scope
 	for (Parameter param : func->paramList)
 	{
 		int offset = func->changeFrameSize(param.type->size);
@@ -334,4 +350,9 @@ void CallNode::eval(ScopeNode* parent)
 
 		evalExpression(this->args[i], parent);
 	}
+}
+
+void ImmediateNode::eval(ScopeNode* parent)
+{
+	evalExpression(this, parent);
 }

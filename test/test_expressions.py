@@ -130,7 +130,6 @@ class TestExpressions:
 	def test_mul(self, compile_and_run, input, expected):
 		assert compile_and_run(input) == expected
 
-	# TODO: This should be parametrized (ironically)
 	@pytest.mark.parametrize("input, expected", [
 		(textwrap.dedent("""
 		int main()
@@ -341,3 +340,60 @@ class TestExpressions:
 		}
 		""")
 		assert compile_and_run(code) == 1
+
+	@pytest.mark.parametrize("input, expected", [
+		(textwrap.dedent("""
+		int main() {
+			int a = 0;
+			a = a = 2;
+			return a;
+		}
+		"""), 2),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 0;
+			a = a;
+			return a;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			1;
+			return 0;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a;
+			int b;
+			int c;
+			int d = 1;
+
+			a = b = c = d;
+
+			return a;
+		}
+		"""), 1),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 0;
+			a;
+			1;
+			1 + 1;
+			-1;
+			--a;
+			++a;
+			a++;
+			a--;
+			-a;
+			return 0;
+		}
+		"""), 0)
+
+	])
+	def test_assignment_expr(self, compile_and_run, input, expected):
+		assert compile_and_run(input) == expected

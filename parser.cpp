@@ -30,7 +30,7 @@ static std::vector<Parameter> parseParamList();
 static std::vector<Node*> parseStatements(bool isCompound, ScopeNode* parent);
 static Type *parseType();
 static Node* parseDeclaration(ScopeNode* parent);
-static AssignmentNode* parseAssignment(ScopeNode* parent);
+static Node* parseAssignment(ScopeNode* parent);
 static IfNode* parseIf(ScopeNode* parent);
 static ElseNode* parseElse(ScopeNode* parent);
 static WhileNode* parseWhile(ScopeNode* parent);
@@ -97,7 +97,29 @@ static Node *parseExpression(ScopeNode* parent)
 	if (token().tokenType != END_OF_FILE &&
 		token().tokenType != SEMICOLON)
 	{
-		root = parseLogicalOr(parent);
+		root = parseAssignment(parent);
+	}
+	return root;
+}
+
+static Node* parseAssignment(ScopeNode* parent)
+{
+	Node* root = parseLogicalOr(parent);
+
+	while (token().tokenType == ASSIGNMENT)
+	{
+		advance();
+		auto* node = new AssignmentNode(root->line);
+		node->lhs = root;
+
+		if (auto* l = dynamic_cast<VariableNode*>(node->lhs)) {
+			node->name = l->name;
+		} else {
+			throw_error_line(1, node->lhs->line,
+							fmt::format("{} is not a valid lvalue", node->lhs->typeName()));
+		}
+		node->expression = parseAssignment(parent);
+		root = node;
 	}
 	return root;
 }
@@ -205,19 +227,38 @@ static Node *parseTerm(ScopeNode* parent)
 static Node* parseUnary(ScopeNode* parent)
 {
 	Node* root;
+	UnaryOpNode *unop;
 
-	switch (token().tokenType)
+	if (token().tokenType != MINUS &&
+		token().tokenType != LOGICAL_NOT &&
+		token().tokenType != INC &&
+		token().tokenType != DEC)
 	{
-		UnaryOpNode *unop;
-		case MINUS:
-		case LOGICAL_NOT:
-			unop = new UnaryOpNode(token().line, token().tokenType, NULL);
+		root = parseFactor(parent);
+	}
+	else {
+		TokenType type;
+		switch (token().tokenType)
+		{
+			case MINUS:
+				type = MINUS;
+				break;
+			case LOGICAL_NOT:
+				type = LOGICAL_NOT;
+				break;
+			case INC:
+				type = PREINC;
+				break;
+			case DEC:
+				type = PREDEC;
+				break;
+			default:
+				throw_error_line(1, token().line, "Missed a rule for a unary op");
+		}
+			unop = new UnaryOpNode(token().line, type, NULL);
 			advance();
-			unop->expression = parseFactor(parent);
+			unop->expression = parseUnary(parent);
 			root = unop;
-			break;
-		default:
-			root = parseFactor(parent);
 	}
 	return root;
 }
@@ -240,6 +281,18 @@ static Node *parseFactor(ScopeNode* parent)
 		else {
 			factor = new VariableNode(token().line, token().lexeme);
 			advance();
+			if (token().tokenType == INC)
+			{
+				auto* un = new UnaryOpNode(token().line, POSTINC, factor);
+				advance();
+				factor = un;
+			}
+			else if (token().tokenType == DEC)
+			{
+				auto* un = new UnaryOpNode(token().line, POSTDEC, factor);
+				advance();
+				factor = un;
+			}
 		}
 		return factor;
 	}
@@ -355,6 +408,10 @@ static std::vector<Node*> parseStatements(bool isCompound, ScopeNode* parent)
 			case FOR:
 				body.push_back(parseFor(parent));
 				break;
+			case POSTINC:
+			case POSTDEC:
+				parseExpression(parent);
+				break;
 			default:
 				if (token().tokenType == INT &&
 					peek(1).tokenType == IDENTIFIER)
@@ -363,18 +420,9 @@ static std::vector<Node*> parseStatements(bool isCompound, ScopeNode* parent)
 					assert(token().tokenType == SEMICOLON);
 					advance();
 				}
-				else if (token().tokenType ==IDENTIFIER &&
-						 peek(1).tokenType == ASSIGNMENT)
-				{
-					body.push_back(parseAssignment(parent));
-					assert(token().tokenType == SEMICOLON);
-					advance();
-				}
 				else {
-					throw_error_line(1, 
-									 token().line, 
-									 fmt::format("parseStatements failure to parse {}", 
-									 token().tokenTypeToStr(token().tokenType)));
+					body.push_back(parseExpression(parent));
+					advance();
 				}
 		}
 
@@ -417,7 +465,8 @@ static Node* parseDeclaration(ScopeNode* parent)
 	auto* node = new DeclarationNode(token().line, token().lexeme, type);
 
 	if (peek().tokenType == ASSIGNMENT) {
-		node->assignment = parseAssignment(parent);
+		advance(2);
+		node->expression = parseExpression(parent);
 	}
 	else if (peek().tokenType == SEMICOLON) {
 		advance();
@@ -432,31 +481,34 @@ static Node* parseDeclaration(ScopeNode* parent)
 	return node;
 }
 
-// TODO: assignment is an expression. hmmm...
-static AssignmentNode* parseAssignment(ScopeNode* parent)
-{
-	assert(peek(1).tokenType == ASSIGNMENT);
-
-	auto* node = new AssignmentNode(token().line, token().lexeme);
-
-	advance(2);
-	node->expression = parseExpression(parent);
-	return node;	
-}
-
-
-UnaryOp TokenTypeToUnaryOp(TokenType op) {
-	switch (op)
+UnaryOp TokenTypeToUnaryOp(TokenType type) {
+	UnaryOp op;
+	switch (type)
 	{
 		case MINUS:
-			return UnaryOp::NEGATE;
+			op = UnaryOp::NEGATE;
+			break;
 		case LOGICAL_NOT:
-			return UnaryOp::LOGICAL_NOT;
+			op = UnaryOp::LOGICAL_NOT;
+			break;
+		case PREINC:
+			op = UnaryOp::PREINC;
+			break;
+		case POSTINC:
+			op = UnaryOp::POSTINC;
+			break;
+		case PREDEC:
+			op = UnaryOp::PREDEC;
+			break;
+		case POSTDEC:
+			op = UnaryOp::POSTDEC;
+			break;
 		default:
 			throw_error(1, fmt::format("TokenTypeToUnaryOp: no rule for token {}",
-				Token::tokenTypeToStr(op)));
+				Token::tokenTypeToStr(type)));
 			exit(1);
 	}
+	return op;
 }
 
 std::string unaryOpToStr(UnaryOp op)
@@ -467,6 +519,14 @@ std::string unaryOpToStr(UnaryOp op)
 			return "NEGATE";
 		case UnaryOp::LOGICAL_NOT:
 			return "LOGICAL_NOT";
+		case UnaryOp::PREINC:
+			return "PREINC";
+		case UnaryOp::POSTINC:
+			return "POSTINC";
+		case UnaryOp::PREDEC:
+			return "PREDEC";
+		case UnaryOp::POSTDEC:
+			return "POSTDEC";
 		default:
 			throw_error(1, fmt::format("Error in binaryOpToAsm: Missing op translation for {}",
 				unaryOpToStr(op)));

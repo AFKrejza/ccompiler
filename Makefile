@@ -13,6 +13,14 @@ LDFLAGS := -lfmt
 SOURCES := main.cpp lexer.cpp parser.cpp sema.cpp taco.cpp codegen.cpp
 OBJECTS:= $(SOURCES:.cpp=.o)
 
+# for fun
+# C++_ASMFLAGS := -save-temps=obj -masm=intel -fverbose-asm -fno-asynchronous-unwind-tables
+
+# for cleaner gcc output, -01 
+CFLAGS := -S -O0 -masm=intel -fno-asynchronous-unwind-tables -fcf-protection=none -fno-pie
+# extras for more complicated programs
+# -fno-unwind-tables -fno-stack-protector -fno-pic -fno-ident -g0
+
 .PHONY: all clean re
 all: rat
 
@@ -26,8 +34,11 @@ rat: $(OBJECTS)
 
 $(OBJECTS): Makefile
 
+gcc:
+	gcc $(CFLAGS) src.c -o src.s
+
 clean:
-	rm -f main $(OBJECTS) $(OBJECTS:.o=.d)
+	rm -f rat $(OBJECTS) $(OBJECTS:.o=.d)
 
 re:
 	$(MAKE) clean

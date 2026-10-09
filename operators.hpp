@@ -17,7 +17,11 @@ enum class BinaryOp {
 
 enum class UnaryOp {
 	NEGATE,
-	LOGICAL_NOT
+	LOGICAL_NOT,
+	PREINC,
+	POSTINC,
+	PREDEC,
+	POSTDEC
 };
 
 enum TokenType {
@@ -61,4 +65,9 @@ enum TokenType {
 	BREAK,
 	CONTINUE,
 	END_OF_FILE,
+	INC, DEC,
+	PREINC,
+	POSTINC,
+	PREDEC,
+	POSTDEC
 };

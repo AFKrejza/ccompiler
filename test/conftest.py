@@ -3,6 +3,8 @@ import pytest
 import subprocess
 import tempfile
 
+# run tests with pytest test/test_conditionals.py --tb=no
+
 NAME = "rat"
 
 @pytest.fixture

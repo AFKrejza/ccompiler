@@ -17,3 +17,10 @@ source.s
 src.s
 func.txt
 rat
+*.ii
+unary.txt
+framesize.txt
+if.txt
+parsefix.txt
+test.c
+test.s

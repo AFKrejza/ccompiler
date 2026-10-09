@@ -262,6 +262,22 @@ void UnaryInstr::code()
 			emit("movzx r10d, r10b");
 			emit(fmt::format("mov {}, r10d", operandText(this->dest)));
 			break;
+		case UnaryOp:: PREINC:
+			emit(fmt::format("inc DWORD PTR {}", operandText(this->src)));
+			break;
+		case UnaryOp:: PREDEC:
+			emit(fmt::format("dec DWORD PTR {}", operandText(this->src)));
+			break;
+		case UnaryOp::POSTINC:
+			emit(fmt::format("mov r10d, {}", operandText(this->src)));
+			emit(fmt::format("mov {}, r10d", operandText(this->dest)));
+			emit(fmt::format("inc DWORD PTR {}", operandText(this->src)));
+			break;
+		case UnaryOp::POSTDEC:
+			emit(fmt::format("mov r10d, {}", operandText(this->src)));
+			emit(fmt::format("mov {}, r10d", operandText(this->dest)));
+			emit(fmt::format("dec DWORD PTR {}", operandText(this->src)));
+			break;
 		default:
 			throw_error(1, "emitUnaryInstr: invalid Unary Instruction");
 	}

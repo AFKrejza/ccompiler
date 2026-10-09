@@ -14,7 +14,7 @@ Individual tokens are in ""
 
 Terminals: type, IDENTIFIER, INTEGER
 
-2026-09-27 parser grammar:
+2026-10-09 parser grammar:
 
 <program>		= { <function> }
 <function>		= "int" IDENTIFIER "(" <paramList> ")" <functionBody>
@@ -22,24 +22,25 @@ Terminals: type, IDENTIFIER, INTEGER
 <parameter>		= "int" IDENTIFIER
 <functionBody>	=  <compound>
 <statement>		= <ret> | <declaration> | <assignment> | <if> |
-				  <while> | <dowhile> | <for> | "break" | "continue" | <compound>
+				  <while> | <dowhile> | <for> | "break" | "continue" | <compound> |
+				  <expression> ";"
 <compound>		= "{" { <statement> } "}"
 <if>			= "if" "(" <expression> ")" <statement> [ <else> ] // else resolves to nearest if
 <else>			= "else" <statement>
 <ret>			= "return" <expression>
 <declaration>	= "int" IDENTIFIER [ "=" <expression> ]
-<expression>	= <logicalOr>
+<expression>	= <assignment>
+<assignment>	= <logicalOr> [ "=" <assignment> ]
 <logicalOr>		= <logicalAnd>	{ "||" <logicalAnd> }
 <logicalAnd>	= <equality>	{ "&&" <equality> }
 <equality>		= <relational>	{ ( "==" | "!=") <relational> }
 <relational>	= <additive>	{ ( "<" | "<=" | ">" | ">=" ) <additive> }
 <additive>		= <term>		{ ("+" | "-") <term> }
 <term>			= <unary>		{ "*" <unary> }
-<unary>			= <unop> <unary> | <factor>
-<unop>			= "-" | "!"
+<unary>			= ("-" | "!" | "++" | "--") <unary> | <factor> [<postfix>]
 <factor>		= INTEGER | <call> | IDENTIFIER | "(" <expression> ")"
 <call>			= IDENTIFIER "(" <arguments> ")"
-<arguments>		= [ <expression> { "," <expression }  ]
+<arguments>		= [ <expression> { "," <expression> }  ]
 <while>			= "while" "(" <expression> ")" <statement>
 <dowhile>		= "do" <statement> "while" "(" <expression> ")"
 <for>			= "for" "(" [<expression> | <declaration>] ";" [<expression>] ";" [<expression>] ")" <statement>

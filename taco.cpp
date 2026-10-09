@@ -16,6 +16,9 @@ static void genOr(BinaryOpNode* node, Operand dest, ScopeNode* parent);
 static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent);
 static void genBody(std::vector<Node*> body, ScopeNode* parent);
 static Operand genCall(CallNode* node, ScopeNode* parent);
+static Operand genAssignment(AssignmentNode* node, ScopeNode* parent);
+static Operand emitPrefix(UnaryOpNode* node, ScopeNode* parent);
+static Operand emitPostFix(UnaryOpNode* node, ScopeNode* parent);
 
 static int current = 0; // temp register
 static int labelCount = 0;
@@ -80,10 +83,28 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 		return vreg;
 	}
 	else if (auto* unOp = dynamic_cast<UnaryOpNode*>(node)) {
-		vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
-		Operand src = genExpression(unOp->expression, parent);
-		auto* unInstr = new UnaryInstr(vreg, src, unOp->op);
-		emit(unInstr);
+		UnaryInstr* unInstr;
+		Operand src;
+		Attrs var{nullptr, 0, 0};
+
+		switch (unOp->op)
+		{
+			case UnaryOp::PREINC:
+			case UnaryOp::PREDEC:
+				vreg = emitPrefix(unOp, parent);
+				break;
+			case UnaryOp::POSTINC:
+			case UnaryOp::POSTDEC:
+				vreg = emitPostFix(unOp, parent);
+				break;
+			case UnaryOp::NEGATE:
+			case UnaryOp::LOGICAL_NOT:
+				vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
+				src = genExpression(unOp->expression, parent);
+				unInstr = new UnaryInstr(vreg, src, unOp->op);
+				emit(unInstr);
+				break;
+		}
 		return vreg;
 	}
 	else if (auto* var = dynamic_cast<VariableNode*>(node)) {
@@ -94,6 +115,9 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 	}
 	else if (auto* call = dynamic_cast<CallNode*>(node)) {
 		return genCall(call, parent);
+	}
+	else if (auto* assign = dynamic_cast<AssignmentNode*>(node)) {
+		return genAssignment(assign, parent); 
 	}
 	else {
 		throw_error_line(1, 
@@ -192,12 +216,13 @@ std::string operandToStr(Operand operand)
 		case OperandKind::Variable:
 			return fmt::format("Variable({}, {})", operand.name, operand.offset);
 		default:
+			fmt::print("\nOperand: {}\n", operand.name, operand.offset, operand.size, operand.val);
 			throw_error(1, "Operand has invalid kind. Hello??");
 			exit(1);
 	}
 }
 
-static void genAssignment(AssignmentNode* node, ScopeNode* parent)
+static Operand genAssignment(AssignmentNode* node, ScopeNode* parent)
 {
 	Attrs variable = parent->getSymbol(node->name, node->line, parent);
 	Operand dest = Operand::Variable(node->name,
@@ -223,13 +248,19 @@ static void genAssignment(AssignmentNode* node, ScopeNode* parent)
 	else {
 		src = genExpression(node->expression, parent);
 		emit(new AssignmentInstr(dest, src));
-	}	
+	}
+
+	return src;
 }
 
 void DeclarationNode::gen(ScopeNode* parent)
 {
-	if (this->assignment == nullptr) return;
-	genAssignment(this->assignment, parent);
+	if (this->expression == nullptr) return;
+
+	auto* assign = new AssignmentNode(this->line);
+	assign->name = this->name;
+	assign->expression = this->expression;
+	genAssignment(assign, parent);
 }
 
 Label* newLocalLabel(std::string text)
@@ -425,4 +456,52 @@ void FuncDefNode::gen(ScopeNode* parent)
 	this->frameSize = this->frameSize + 16 - (pad ? pad : 16);
 	static_cast<FuncPrologueInstr*>(ir.at(index))->frameSize = this->frameSize;
 	emit(new FuncEpilogueInstr(this->name));
+}
+
+void UnaryOpNode::gen(ScopeNode* parent)
+{
+	genExpression(this, parent);
+}
+
+void ImmediateNode::gen(ScopeNode* parent)
+{
+	genExpression(this, parent);
+}
+
+void VariableNode::gen(ScopeNode* parent)
+{
+	genExpression(this, parent);
+}
+
+void ElseNode::gen(ScopeNode* parent)
+{
+	(void)parent;
+	throw_error_line(1, this->line, "Else should never be alone. How.");
+}
+
+void BinaryOpNode::gen(ScopeNode* parent)
+{
+	genExpression(this, parent);
+}
+
+void CallNode::gen(ScopeNode* parent)
+{
+	genExpression(this, parent);
+}
+
+static Operand emitPrefix(UnaryOpNode* node, ScopeNode* parent)
+{
+	auto* v = static_cast<VariableNode*>(node->expression);
+	Attrs var = parent->getSymbol(v->name, v->line, parent);
+	Operand vreg = Operand::Variable(v->name, var.offset, var.type->size);
+	emit(new UnaryInstr(vreg, vreg, node->op));
+	return vreg;
+}
+
+static Operand emitPostFix(UnaryOpNode* node, ScopeNode* parent)
+{
+	Operand vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
+	Operand src = genExpression(node->expression, parent);
+	emit(new UnaryInstr(vreg, src, node->op));
+	return vreg;
 }

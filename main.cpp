@@ -49,7 +49,6 @@ int main(int argc, char *argv[])
 	#endif
 
 	GodNode *ast = parser();
-
 	GodNode *vAst = sema(ast); // validated ast
 
 	#ifdef AST
@@ -153,6 +152,12 @@ std::unordered_map<TokenType, std::string> populatePrintmap()
 	printmap[FOR] = "for";
 	printmap[BREAK] = "break";
 	printmap[CONTINUE] = "continue";
+	printmap[PREINC] = "preinc";
+	printmap[PREDEC] = "predec";
+	printmap[POSTINC] = "postinc";
+	printmap[POSTDEC] = "postdec";
+	printmap[INC] = "inc";
+	printmap[DEC] = "dec";
 	
 	return printmap;
 };
