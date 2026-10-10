@@ -464,3 +464,94 @@ int main()
 	])
 	def test_forward_decl_fails(self, compile_fail, input):
 		assert compile_fail(textwrap.dedent(input)) != 0
+
+
+	@pytest.mark.parametrize("input, expected", [
+		(("""
+			int factorial(int n)
+			{
+				if (n > 1)
+					return n * factorial(n - 1);
+				
+				return n;
+			}
+			int main()
+			{
+				return factorial(5);
+			}
+		"""), 120),
+		(("""
+			int fib(int n)
+			{
+				if (n < 2)
+					return n;
+				return fib(n - 1) + fib(n - 2);
+			}
+			int main()
+			{
+				return fib(10);
+			}
+		"""), 55),
+				# linear
+		(("""
+			int gauss(int n)
+			{
+				if (n == 0)
+					return 0;
+				int rest = gauss(n - 1);
+				return n + rest;
+			}
+			int main()
+			{
+				return gauss(10);
+			}
+		"""), 55),
+				# two arguments
+		(("""
+			int power(int base, int exp)
+			{
+				if (exp == 0)
+					return 1;
+				return base * power(base, exp - 1);
+			}
+			int main()
+			{
+				return power(2, 7);
+			}
+		"""), 128),
+		# go 100 levels deep
+		(("""
+			int depth(int n)
+			{
+				if (n == 0)
+					return 0;
+				return 1 + depth(n - 1);
+			}
+			int main()
+			{
+				return depth(100);
+			}
+		"""), 100),
+		# recursion through forward declaration
+		(("""
+			int is_odd(int n);
+			int is_even(int n)
+			{
+				if (n == 0)
+					return 1;
+				return is_odd(n - 1);
+			}
+			int is_odd(int n)
+			{
+				if (n == 0)
+					return 0;
+				return is_even(n - 1);
+			}
+			int main()
+			{
+				return is_even(10);
+			}
+		"""), 1),
+	])
+	def test_recursion(self, compile_and_run, input, expected):
+		assert compile_and_run(textwrap.dedent(input)) == expected

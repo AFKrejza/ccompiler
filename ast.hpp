@@ -137,10 +137,7 @@ class ScopeNode : public StatementNode {
 				return scope->scope.at(name);
 			}
 			else if (count > 1) {
-				throw_error_line(1,
-								 line,
-								 fmt::format(
-									"Compiler error: {} was declared more "
+				throw_error_line(1, line, fmt::format("Compiler error: {} was declared more "
 									"than once in a given scope. I messed up somewhere", name));
 			}
 			else if (!scope->scope.count(name) && scope->parent == nullptr) {

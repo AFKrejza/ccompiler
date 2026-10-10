@@ -312,13 +312,15 @@ void FuncNode::eval(ScopeNode* parent)
 
 	if (it == this->parent->scope.end())
 	{
+		// set immediately to allow recursion
+		Attrs attrs = { this->type, 0, 0, this };
+		this->parent->scope.insert({ this->name, attrs });
 		if (this->isDef)
 		{
-			fmt::print("Function '{}' defined\n", this->name);
 			evalParams(this);
 			evalStatements(this, this);
 		}
-		Attrs attrs = { this->type, 0, 0, this };
+		attrs = { this->type, 0, 0, this };
 		this->parent->scope.insert({ this->name, attrs });
 		return;
 	}
@@ -410,6 +412,7 @@ void ImmediateNode::eval(ScopeNode* parent)
 	evalExpression(this, parent);
 }
 
+// inserts parameters into function scope and reserves stack offset
 static void evalParams(FuncNode* node)
 {
 	for (Parameter param : node->paramList)
