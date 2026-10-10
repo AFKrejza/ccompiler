@@ -19,7 +19,7 @@ static bool typesEqual(Type *first, Type *second);
 static void evalStatements(StatementNode* block, ScopeNode* parent);
 static void evalLoop(LoopNode* node);
 static bool evalExpression(Node* expr, ScopeNode* parent);
-static void evalFunction(FuncDefNode* func);
+static void evalParams(FuncNode* node);
 
 GodNode* program;
 
@@ -27,36 +27,26 @@ GodNode *sema(GodNode *prog)
 {
 	program = prog;
 
-	// add global vars
-
-	FuncDefNode* main = nullptr;
-
 	for (Node *node : program->body)
 	{
-		if (auto* func = dynamic_cast<FuncDefNode*>(node))
-		{
-			if (func->name == "main")
-			{
-				if (main) throw_error_line(1, func->line, 
-					fmt::format("Function 'main' was redefined. Original definition on"
-								"line {}", main->line));
-				else main = func;
-			}
-
-			auto it = program->scope.find(func->name);
-			if (it != program->scope.end())
-				throw_error_line(1, func->line,
-						fmt::format("Redefinition of function {}, "
-									"first defined on line {}", it->first, it->second.line));
-
-			func->parent = program;
-			evalFunction(func);
-			program->scope.insert({func->name, Attrs{new FuncDefType{}, 0, func->line, func }});
+		if (auto* func = dynamic_cast<FuncNode*>(node)) {
+			func->eval(program);
+		}
+		else {
+			throw_error_line(1, node->line, fmt::format("Sema: no rule for {}", node->typeName()));
 		}
 	}
-	if (main == nullptr)
-		throw_error(1, "Program is missing the main function");
 
+	auto it = program->scope.find("main");
+	if (it == program->scope.end()) {
+		throw_error(1, "Program is missing the 'main' function");
+	}
+	// not checking if other functions are defined cuz I first want to figure out header files.
+	if (it->second.func->isDef == false) {
+		throw_error_line(1, it->second.func->line,
+						 "'main' function was declared but never defined");
+	}
+		
 	fmt::print("Semantic analysis completed\n");
 	return program;
 }
@@ -184,13 +174,17 @@ void AssignmentNode::eval(ScopeNode* parent)
 void ReturnNode::eval(ScopeNode* parent)
 {
 	evalExpression(this->expression, parent);
-	FuncDefNode* func = this->findParentFunction(this->parent);
+	FuncNode* func = this->findParentFunction(this->parent);
+
 	if (func == nullptr)
 		throw_error(1, "Return has no parent function");
 
 	Type* exprType = evalType(this->expression, func);
+	
 	if (!typesEqual(func->returnType, exprType))
-		throw_error_line(1, this->line, "Invalid return type");
+		throw_error_line(1, this->line,
+			fmt::format("Invalid return type. Expected {}, got {}",
+				func->returnType->typeName(), exprType->typeName()));
 	
 	this->expression->type = exprType;
 }
@@ -303,16 +297,75 @@ void UnaryOpNode::eval(ScopeNode* parent)
 	evalExpression(this->expression, parent);
 }
 
-static void evalFunction(FuncDefNode* func)
+// also adds it to the scope
+void FuncNode::eval(ScopeNode* parent)
 {
-	for (Parameter param : func->paramList)
-	{
-		int offset = func->changeFrameSize(param.type->size);
-		func->scope.insert({param.name, Attrs{param.type, offset, param.line}});
-	}
-	// TODO: unused variable & parameter check
+	(void) parent;
+	this->parent = parent;
 
-	evalStatements(func, func);
+	auto it = this->parent->scope.find(this->name);
+
+	if (it != this->parent->scope.end() && this->isDef && it->second.func && it->second.func->isDef)
+		throw_error_line(1, this->line,
+				fmt::format("Redefinition of function {}, "
+							"first defined on line {}", it->first, it->second.line));
+
+	if (it == this->parent->scope.end())
+	{
+		if (this->isDef)
+		{
+			fmt::print("Function '{}' defined\n", this->name);
+			evalParams(this);
+			evalStatements(this, this);
+		}
+		Attrs attrs = { this->type, 0, 0, this };
+		this->parent->scope.insert({ this->name, attrs });
+		return;
+	}
+
+	FuncNode* func = it->second.func;
+
+	if (this->isDef && func->isDef)
+	{
+		throw_error_line(1, this->line,
+			fmt::format("Function {} was previously defined on line {}", func->name, func->line));
+	}
+
+	if (!typesEqual(this->returnType, func->returnType))
+	{
+		throw_error_line(1, this->line,
+			fmt::format("Declaration of function {} with return type {} does not match "
+						"previous declaration on line {} with type {}",
+						this->name, this->returnType->typeName(),
+						func->line, func->type->typeName()
+		));
+	}
+
+	if (func->paramList.size() != this->paramList.size())
+	{
+		throw_error_line(1, this->line,
+			fmt::format("Declaration has different number of parameters. "
+						"Expected {}, got {}", func->paramList.size(), this->paramList.size()));
+	}
+
+	for (size_t i = 0; i < func->paramList.size(); ++i)
+	{
+		Type* decl = this->paramList[i].type;
+		Type* def = func->paramList[i].type;
+
+		if (!typesEqual(decl, def)) {
+			throw_error_line(1, this->line,
+				fmt::format("Parameter {} of type {} does not match previous "
+							"declaration of type {}", i, decl->typeName(), def->typeName()));
+		}
+	}
+
+	if (this->isDef && !func->isDef) {
+		// overwrite declaration with definition
+		evalParams(this);
+		evalStatements(this, this);
+		it->second.func = this;
+	}
 }
 
 void CallNode::eval(ScopeNode* parent)
@@ -324,11 +377,11 @@ void CallNode::eval(ScopeNode* parent)
 	{
 		throw_error_line(1,
 						 this->line,
-						 fmt::format("Call to symbol {} which is not a {} but a {}",
+						 fmt::format("Call to symbol '{}' which is not a {} but a {}",
 						 this->name, funcType->typeName(), attrs.type->typeName()));
 	}
 
-	FuncDefNode* func = attrs.func;
+	FuncNode* func = attrs.func;
 
 	if (this->args.size() != func->paramList.size())
 	{
@@ -355,4 +408,13 @@ void CallNode::eval(ScopeNode* parent)
 void ImmediateNode::eval(ScopeNode* parent)
 {
 	evalExpression(this, parent);
+}
+
+static void evalParams(FuncNode* node)
+{
+	for (Parameter param : node->paramList)
+	{
+		int offset = node->changeFrameSize(param.type->size);
+		node->scope.insert({param.name, Attrs{param.type, offset, param.line}});
+	}
 }

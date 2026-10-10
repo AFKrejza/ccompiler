@@ -434,15 +434,17 @@ Operand genCall(CallNode* node, ScopeNode* parent)
 	return retReg;
 }
 
-void FuncDefNode::gen(ScopeNode* parent)
+void FuncNode::gen(ScopeNode* parent)
 {
 	(void)parent;
+	if (!this->isDef) return;
+
 	emit(new FuncPrologueInstr(this->name));
 	size_t index = ir.size() - 1;
 
 	for (size_t i = 0; i < this->paramList.size(); i++)
 	{
-		Attrs attrs = this->scope.at(this->paramList[i].name);
+		Attrs attrs = this->getSymbol(this->paramList[i].name, this->line, this);
 		Operand op = Operand::Variable(this->paramList[i].name,
 										attrs.offset,
 										attrs.type->size);

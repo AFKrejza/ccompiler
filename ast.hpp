@@ -93,16 +93,16 @@ class VoidNode : public Node {
 		void gen(ScopeNode* parent) override { (void)parent; }
 };
 
-class FuncDefNode;
+class FuncNode;
 
 // for symbol tables
 struct Attrs {
 	Type* type;
 	int offset;
 	int line; // declaration line
-	FuncDefNode* func = nullptr;
+	FuncNode* func = nullptr;
 
-	Attrs(Type* type, int offset, int line, FuncDefNode* func = nullptr)
+	Attrs(Type* type, int offset, int line, FuncNode* func = nullptr)
 	:	type(type),
 		offset(offset),
 		line(line),
@@ -128,13 +128,13 @@ class ScopeNode : public StatementNode {
 
 		ScopeNode(int line, ScopeNode* parent) : StatementNode(line, parent) {}
 
-		// returns the symbol OR throws an error
-		static Attrs getSymbol(std::string name, int line, ScopeNode* parent)
+		// returns the symbol OR throws an error with line argument
+		static Attrs getSymbol(std::string name, int line, ScopeNode* scope)
 		{
-			size_t count = parent->scope.count(name);
+			size_t count = scope->scope.count(name);
 
 			if (count == 1) {
-				return parent->scope.at(name);
+				return scope->scope.at(name);
 			}
 			else if (count > 1) {
 				throw_error_line(1,
@@ -143,11 +143,11 @@ class ScopeNode : public StatementNode {
 									"Compiler error: {} was declared more "
 									"than once in a given scope. I messed up somewhere", name));
 			}
-			else if (!parent->scope.count(name) && parent->parent == nullptr) {
+			else if (!scope->scope.count(name) && scope->parent == nullptr) {
 				throw_error_line(1, line, fmt::format("Use of uninitialized variable {}", name));
 			}
 
-			return parent->parent->getSymbol(name, line, parent->parent);
+			return scope->parent->getSymbol(name, line, scope->parent);
 		}
 
 		virtual void print(int indent) {
@@ -193,18 +193,22 @@ class GodNode : public ScopeNode {
 		}
 };
 
-class FuncDefNode : public ScopeNode {
+class FuncNode : public ScopeNode {
 	public:
 		std::string name;
 		Type *returnType;
 		std::vector<Parameter> paramList;
+		bool isDef;
 
-		FuncDefNode(int line,
+		FuncNode(int line,
 					ScopeNode* parent,
 					std::string name,
-					Type *returnType) : ScopeNode(line, parent) {
-			this->name = name;
-			this->returnType = returnType;
+					Type *returnType,
+					std::vector<Parameter> paramList,
+					bool isDef)
+			: ScopeNode(line, parent), name(name), returnType(returnType),
+				paramList(paramList), isDef(isDef) {
+			this->type = new FuncDefType();
 		}
 
 		void print(int indent) override {
@@ -233,7 +237,7 @@ class FuncDefNode : public ScopeNode {
 		}
 
 		std::string typeName() override {
-			return "FuncDefNode";
+			return "FuncNode";
 		}
 
 		void gen(ScopeNode* parent) override;
@@ -246,6 +250,8 @@ class FuncDefNode : public ScopeNode {
 											  "In function starting on line {}", this->line));
 			return -(this->frameSize += size);
 		}
+
+		void eval(ScopeNode* parent) override;
 
 	private:
 		int frameSize = 0;
@@ -406,11 +412,11 @@ class ReturnNode : public StatementNode {
 			delete this;
 		}
 
-		FuncDefNode* findParentFunction(ScopeNode* parent)
+		FuncNode* findParentFunction(ScopeNode* parent)
 		{
 			if (parent == nullptr)
 				return nullptr;
-			else if (auto* funky = dynamic_cast<FuncDefNode*>(parent))
+			else if (auto* funky = dynamic_cast<FuncNode*>(parent))
 				return funky;
 
 			return findParentFunction(parent->parent);

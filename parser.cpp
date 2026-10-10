@@ -25,7 +25,7 @@ static Node* parseAdditive(ScopeNode* parent);
 static Node *parseTerm(ScopeNode* parent);
 static Node* parseUnary(ScopeNode* parent);
 static Node *parseFactor(ScopeNode* parent);
-static Node *parseFuncDef(GodNode* parent);
+static Node *parseFunc(GodNode* parent);
 static std::vector<Parameter> parseParamList();
 static std::vector<Node*> parseStatements(bool isCompound, ScopeNode* parent);
 static Type *parseType();
@@ -49,7 +49,7 @@ GodNode *parser()
 			tokenList[current + 1].tokenType == IDENTIFIER &&
 			tokenList[current + 2].tokenType == OPEN_PARENTHESES) {
 
-			node = parseFuncDef(program);
+			node = parseFunc(program);
 			program->body.push_back(node);
 		}
 		else {
@@ -314,17 +314,30 @@ static Node *parseFactor(ScopeNode* parent)
 	}
 }
 
-static Node *parseFuncDef(GodNode* parent)
+static Node *parseFunc(GodNode* parent)
 {
 	Type *returnType = parseType();
-
-	FuncDefNode *funcNode = new FuncDefNode(token().line, parent, token().lexeme, returnType);
+	int line = token().line;
+	std::string lexeme = token().lexeme;
+	
 	advance();
 	assert(token().tokenType == OPEN_PARENTHESES);
-	funcNode->paramList = parseParamList();
-	assert(token().tokenType == OPEN_CURLY_BRACE);
-	funcNode->body = parseStatements(true, funcNode);
-	return funcNode;
+	std::vector<Parameter> paramList = parseParamList();
+
+	FuncNode* func;
+
+	if (token().tokenType == SEMICOLON)
+	{
+		auto* node = new FuncNode(line, parent, lexeme, returnType, paramList, false);
+		advance();
+		func = node;
+	}
+	else {
+		auto* node = new FuncNode(line, parent, lexeme, returnType, paramList, true);
+		node->body = parseStatements(true, node);
+		func = node;
+	}
+	return func;
 }
 
 static std::vector<Parameter> parseParamList()

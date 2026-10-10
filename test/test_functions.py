@@ -1,15 +1,3 @@
-"""
-(textwrap.dedent("""
-
-"""), 4),
-
-(textwrap.dedent("""
-
-""")),
-"""
-
-# pytest test/test_functions.py::TestFunctions::test_funcs
-
 import pytest
 import textwrap
 
@@ -325,14 +313,154 @@ int main()
 	def test_functions_compiler_errors(self, compile_fail, input):
 		assert compile_fail(input) != 0
 
-"""
-later this should fail:
-int f(int x)
-{
-	return 1;
-}
-int main()
-{
-	return f(2);
-}
-"""
+
+	@pytest.mark.parametrize("input, expected", [
+		(("""
+		int f(int x) {
+			return 1;
+		}
+		int main() {
+			return f(2);
+		}
+		"""), 1),
+		(("""
+		int f(int n);int f(int n);int f(int n);int f(int n);int f(int n);
+		int f(int n) {
+			return n * 2;
+		}
+		int main() {
+			int a = f(2);
+			return a;
+		}
+		"""), 4),
+		(("""
+		int ghost(int a);
+		int main() {
+			return 7;
+		}
+		"""), 7),
+		(("""
+		int sq(int x) {
+			return x * x;
+		}
+		int sq(int x);
+		int main() {
+			return sq(6);
+		}
+		"""), 36),
+		(("""
+		int later(int x);
+		int main() {
+			return later(5) + later(3);
+		}
+		int later(int x) {
+			return x + x;
+		}
+		"""), 16),
+		(("""
+		int f(int x);
+		int f(int y) {
+			return y + 1;
+		}
+		int main() {
+			return f(10);
+		}
+		"""), 11),
+		(("""
+		int main();
+		int main() {
+			return 1;
+		}
+		"""), 1),
+		])
+	def test_forward_decl(self, compile_and_run, input, expected):
+		assert compile_and_run(textwrap.dedent(input)) == expected
+
+	# these should pass but it's not a big deal. Might add it later.
+	# forward declarations don't need parameter names and the names don't have to match the definition!
+		(("""
+		int s6(int, int, int, int, int, int);
+		int main() {
+			return s6(1, 2, 3, 4, 5, 6);
+		}
+		int s6(int a, int b, int c, int d, int e, int f) {
+			return a + b + c + d + e + f;
+		}
+		"""), 21),
+		(("""
+		int add(int, int);
+		int main() {
+			return add(40, 2);
+		}
+		int add(int a, int b) {
+			return a + b;
+		}
+		"""), 42),
+		(("""
+		int f(int);
+		int f(int y) {
+			return y + 1;
+		}
+		int main() {
+			return f(10);
+		}
+		"""), 11),
+
+	@pytest.mark.parametrize("input", [
+		(("""
+		int main() {
+			return f();
+		}
+		""")),
+		(("""
+		int f(int a);
+		int f(int a, int b) {
+			return a + b;
+		}
+		int main() {
+			return f(1);
+		}
+		""")),
+		(("""
+		int f(int a, int b);
+		int f(int a, int b) {
+			return a + b;
+		}
+		int main() {
+			return f(1);
+		}
+		""")),
+		(("""
+		int g(int a);
+		int g(int a) {
+			return a;
+		}
+		int main() {
+			return g(1, 2);
+		}
+		""")),
+		(("""
+		int f(int a);
+		int f(int a, int b);
+		int main() {
+			return 0;
+		}
+		""")),
+		(("""
+		int h(int a, int b);
+		int main() {
+			return h(5);
+		}
+		""")),
+		(("""
+		int f(int a);
+		int f(int a, int b) {
+			return a + b;
+		}
+		int main() {
+			return 1;
+		}
+		""")),
+	])
+	def test_forward_decl_fails(self, compile_fail, input):
+		assert compile_fail(textwrap.dedent(input)) != 0
