@@ -205,7 +205,19 @@ static void scanToken()
 static void populateKeywords(std::unordered_map<TokenType, std::string> printmap)
 {
 	const std::vector<TokenType> keywordFilter = {
-		CHAR, SHORT, INT, LONG, IF, ELSE, RETURN, WHILE, DO, FOR, BREAK, CONTINUE
+		CHAR,
+		SHORT,
+		INT,
+		LONG,
+		IF,
+		ELSE,
+		RETURN,
+		WHILE,
+		DO,
+		FOR,
+		BREAK,
+		CONTINUE,
+		EXTERN
 	};
 
 	int len = keywordFilter.size();

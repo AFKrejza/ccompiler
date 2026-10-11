@@ -158,6 +158,7 @@ std::unordered_map<TokenType, std::string> populatePrintmap()
 	printmap[POSTDEC] = "postdec";
 	printmap[INC] = "inc";
 	printmap[DEC] = "dec";
+	printmap[EXTERN] = "extern";
 	
 	return printmap;
 };

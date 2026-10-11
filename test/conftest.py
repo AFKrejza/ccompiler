@@ -1,6 +1,7 @@
 import os
 import pytest
 import subprocess
+import sys
 import tempfile
 
 # run tests with pytest test/test_conditionals.py --tb=no
@@ -20,7 +21,9 @@ def compile_and_run():
 		result = subprocess.run([f'./{NAME}', path], capture_output=True, text=True)
 		assert result.returncode == 0, f"Compilation failed: {result.stderr}"
 
-		run = subprocess.run(['./a.out'])
+		run = subprocess.run(['./a.out'], stdout=subprocess.PIPE, text=True)
+		sys.stdout.write(run.stdout)
+
 		return run.returncode
 
 	yield _run

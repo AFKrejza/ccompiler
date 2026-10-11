@@ -69,5 +69,6 @@ enum TokenType {
 	PREINC,
 	POSTINC,
 	PREDEC,
-	POSTDEC
+	POSTDEC,
+	EXTERN
 };

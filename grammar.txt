@@ -14,10 +14,11 @@ Individual tokens are in ""
 
 Terminals: type, IDENTIFIER, INTEGER
 
-2026-10-09 parser grammar:
+2026-10-11 parser grammar:
 
 <program>		= { <function> }
-<function>		= "int" IDENTIFIER "(" <paramList> ")" <functionBody>
+<function>		= [ qualifier ] "int" IDENTIFIER "(" <paramList> ")" ( <functionBody> | ";" )
+<qualifier>		= "extern"
 <paramList>		= [ <parameter> { "," <parameter> } ]
 <parameter>		= "int" IDENTIFIER
 <functionBody>	=  <compound>
@@ -33,12 +34,13 @@ Terminals: type, IDENTIFIER, INTEGER
 <assignment>	= <logicalOr> [ "=" <assignment> ]
 <logicalOr>		= <logicalAnd>	{ "||" <logicalAnd> }
 <logicalAnd>	= <equality>	{ "&&" <equality> }
-<equality>		= <relational>	{ ( "==" | "!=") <relational> }
+<equality>		= <relational>	{ ( "==" | "!=" ) <relational> }
 <relational>	= <additive>	{ ( "<" | "<=" | ">" | ">=" ) <additive> }
-<additive>		= <term>		{ ("+" | "-") <term> }
+<additive>		= <term>		{ ( "+" | "-" ) <term> }
 <term>			= <unary>		{ "*" <unary> }
 <unary>			= ("-" | "!" | "++" | "--") <unary> | <factor> [<postfix>]
 <factor>		= INTEGER | <call> | IDENTIFIER | "(" <expression> ")"
+<postfix>		= "++" | "--"
 <call>			= IDENTIFIER "(" <arguments> ")"
 <arguments>		= [ <expression> { "," <expression> }  ]
 <while>			= "while" "(" <expression> ")" <statement>

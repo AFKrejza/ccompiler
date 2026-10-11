@@ -45,10 +45,13 @@ GodNode *parser()
 	while (token().tokenType != END_OF_FILE)
 	{
 		Node *node;
-		if (token().tokenType == INT &&
-			tokenList[current + 1].tokenType == IDENTIFIER &&
-			tokenList[current + 2].tokenType == OPEN_PARENTHESES) {
 
+		if (token().tokenType == EXTERN) advance();
+
+		if (token().tokenType == INT &&
+			tokenList.at(current + 1).tokenType == IDENTIFIER &&
+			tokenList.at(current + 2).tokenType == OPEN_PARENTHESES)
+		{
 			node = parseFunc(program);
 			program->body.push_back(node);
 		}
@@ -314,8 +317,16 @@ static Node *parseFactor(ScopeNode* parent)
 	}
 }
 
+// always begins parsing from the type
 static Node *parseFunc(GodNode* parent)
 {
+	bool isExtern = false;
+
+	if (current > 0 &&
+		peek(-1).tokenType == EXTERN) {
+		isExtern = true;
+	}
+
 	Type *returnType = parseType();
 	int line = token().line;
 	std::string lexeme = token().lexeme;
@@ -328,12 +339,12 @@ static Node *parseFunc(GodNode* parent)
 
 	if (token().tokenType == SEMICOLON)
 	{
-		auto* node = new FuncNode(line, parent, lexeme, returnType, paramList, false);
+		auto* node = new FuncNode(line, parent, lexeme, returnType, paramList, false, isExtern);
 		advance();
 		func = node;
 	}
 	else {
-		auto* node = new FuncNode(line, parent, lexeme, returnType, paramList, true);
+		auto* node = new FuncNode(line, parent, lexeme, returnType, paramList, true, isExtern);
 		node->body = parseStatements(true, node);
 		func = node;
 	}

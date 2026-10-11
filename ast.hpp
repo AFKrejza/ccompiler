@@ -196,15 +196,17 @@ class FuncNode : public ScopeNode {
 		Type *returnType;
 		std::vector<Parameter> paramList;
 		bool isDef;
+		bool isExtern;
 
 		FuncNode(int line,
 					ScopeNode* parent,
 					std::string name,
 					Type *returnType,
 					std::vector<Parameter> paramList,
-					bool isDef)
+					bool isDef,
+					bool isExtern)
 			: ScopeNode(line, parent), name(name), returnType(returnType),
-				paramList(paramList), isDef(isDef) {
+				paramList(paramList), isDef(isDef), isExtern(isExtern) {
 			this->type = new FuncDefType();
 		}
 

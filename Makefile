@@ -10,8 +10,10 @@ CXXFLAGS := -Wall -Werror -Wextra -g -Wpedantic -Wreturn-type -Wuninitialized
 MYFLAGS := -DTAC -DAST -DASM #-DLEX #-O2
 LDFLAGS := -lfmt
 
+BUILD := build
 SOURCES := main.cpp lexer.cpp parser.cpp sema.cpp taco.cpp codegen.cpp
-OBJECTS:= $(SOURCES:.cpp=.o)
+OBJECTS:= $(SOURCES:%.cpp=$(BUILD)/%.o)
+DEPS := $(OBJECTS:.o=.d)
 
 # for fun
 # C++_ASMFLAGS := -save-temps=obj -masm=intel -fverbose-asm -fno-asynchronous-unwind-tables
@@ -21,16 +23,19 @@ CFLAGS := -S -O0 -masm=intel -fno-asynchronous-unwind-tables -fcf-protection=non
 # extras for more complicated programs
 # -fno-unwind-tables -fno-stack-protector -fno-pic -fno-ident -g0
 
-.PHONY: all clean re
+.PHONY: all clean re r gcc
 all: rat
 
 rat: $(OBJECTS)
 	$(CXX) $(OBJECTS) -o $@ $(LDFLAGS)
 
-%.o: %.cpp
+$(BUILD)/%.o: %.cpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(MYFLAGS) -MMD -MP -c $< -o $@
 
--include $(OBJECTS:.o=.d)
+$(BUILD):
+	mkdir -p $(BUILD)
+
+-include $(DEPS)
 
 $(OBJECTS): Makefile
 
@@ -38,12 +43,9 @@ gcc:
 	gcc $(CFLAGS) src.c -o src.s
 
 clean:
-	rm -f rat $(OBJECTS) $(OBJECTS:.o=.d)
+	rm -rf $(BUILD) rat
 
 re:
 	$(MAKE) clean
 	$(MAKE) all
 
-r:
-	$(MAKE) all
-	$(MAKE) run
