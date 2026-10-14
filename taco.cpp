@@ -10,29 +10,29 @@
 #include "taco.hpp"
 #include "utils.hpp"
 
-static void emit(Instruction* instr);
+static void emit(std::unique_ptr<Instruction> instr);
 static Operand genExpression(Node *node, ScopeNode* parent);
 static void genOr(BinaryOpNode* node, Operand dest, ScopeNode* parent);
 static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent);
-static void genBody(std::vector<Node*> body, ScopeNode* parent);
+static void genBody(std::vector<std::unique_ptr<Node>>& body, ScopeNode* parent);
 static Operand genCall(CallNode* node, ScopeNode* parent);
-static Operand genAssignment(AssignmentNode* node, ScopeNode* parent);
+static Operand genAssignment(int line, std::string name, Node* expr, ScopeNode* parent);
 static Operand emitPrefix(UnaryOpNode* node, ScopeNode* parent);
 static Operand emitPostFix(UnaryOpNode* node, ScopeNode* parent);
 
 static int current = 0; // temp register
 static int labelCount = 0;
-static std::vector<Instruction*> ir;
+static std::vector<std::unique_ptr<Instruction>> ir;
 
-std::vector<Instruction*> taco(GodNode *program)
+std::vector<std::unique_ptr<Instruction>> taco(GodNode *program)
 {
-	for (Node* node : program->body)
+	for (const std::unique_ptr<Node>& node : program->body)
 	{
 		node->gen(program);
 	}
 
 	fmt::print("IR generated\n");
-	return ir;
+	return std::move(ir);
 }
 
 static int newVreg()
@@ -45,16 +45,16 @@ static void genStatement(Node* node, ScopeNode* parent)
 	node->gen(parent);
 }
 
-static void genBody(std::vector<Node*> body, ScopeNode* parent)
+static void genBody(std::vector<std::unique_ptr<Node>>& body, ScopeNode* parent)
 {
 	for (size_t i = 0; i < body.size(); i++) {
-		genStatement(body[i], parent);
+		genStatement(body[i].get(), parent);
 	}
 }
 
-static void emit(Instruction* instr)
+static void emit(std::unique_ptr<Instruction> instr)
 {
-	ir.push_back(instr);
+	ir.emplace_back(std::move(instr));
 }
 
 static Operand genExpression(Node *node, ScopeNode* parent)
@@ -70,20 +70,20 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 			return Operand::Temp(newVreg(), parent->changeFrameSize(4));
 		}
 		
-		Operand left = genExpression(binOp->left, parent);
-		Operand right = genExpression(binOp->right, parent);
+		Operand left = genExpression(binOp->left.get(), parent);
+		Operand right = genExpression(binOp->right.get(), parent);
 		vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
 
-		auto* binInstr = new BinaryInstr(vreg,
+		auto binInstr = std::make_unique<BinaryInstr>(vreg,
 										 binOp->op,
 										 left,
 										 right);
 
-		emit(binInstr);
+		emit(std::move(binInstr));
 		return vreg;
 	}
 	else if (auto* unOp = dynamic_cast<UnaryOpNode*>(node)) {
-		UnaryInstr* unInstr;
+		std::unique_ptr<UnaryInstr> unInstr;
 		Operand src;
 		Attrs var{nullptr, 0, 0};
 
@@ -100,9 +100,9 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 			case UnaryOp::NEGATE:
 			case UnaryOp::LOGICAL_NOT:
 				vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
-				src = genExpression(unOp->expression, parent);
-				unInstr = new UnaryInstr(vreg, src, unOp->op);
-				emit(unInstr);
+				src = genExpression(unOp->expression.get(), parent);
+				unInstr = std::make_unique<UnaryInstr>(vreg, src, unOp->op);
+				emit(std::move(unInstr));
 				break;
 		}
 		return vreg;
@@ -117,7 +117,7 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 		return genCall(call, parent);
 	}
 	else if (auto* assign = dynamic_cast<AssignmentNode*>(node)) {
-		return genAssignment(assign, parent); 
+		return genAssignment(assign->line, assign->name, assign->expression.get(), parent); 
 	}
 	else {
 		throw_error_line(1, 
@@ -129,16 +129,16 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 
 void ReturnNode::gen(ScopeNode* parent)
 {
-	Operand dest = genExpression(this->expression, parent);
+	Operand dest = genExpression(this->expression.get(), parent);
 
-	if (auto* binOp = dynamic_cast<BinaryOpNode*>(this->expression))
+	if (auto* binOp = dynamic_cast<BinaryOpNode*>(this->expression.get()))
 	{
 		if (binOp->op == BinaryOp::LOGICAL_OR)
 				genOr(binOp, dest, parent);
 		else if (binOp->op == BinaryOp::LOGICAL_AND)
 				genAnd(binOp, dest, parent);
 	}
-	emit(new ReturnInstr(dest));
+	emit(std::make_unique<ReturnInstr>(dest));
 }
 
 BinaryOp TokenTypeToBinaryOp(TokenType op) {
@@ -222,15 +222,15 @@ std::string operandToStr(Operand operand)
 	}
 }
 
-static Operand genAssignment(AssignmentNode* node, ScopeNode* parent)
+static Operand genAssignment(int line, std::string name, Node* expr, ScopeNode* parent)
 {
-	Attrs variable = parent->getSymbol(node->name, node->line, parent);
-	Operand dest = Operand::Variable(node->name,
+	Attrs variable = parent->getSymbol(name, line, parent);
+	Operand dest = Operand::Variable(name,
 									 variable.offset,
 									 variable.type->size);
 	Operand src;
 
-	if (auto* binOp = dynamic_cast<BinaryOpNode*>(node->expression))
+	if (auto* binOp = dynamic_cast<BinaryOpNode*>(expr))
 	{
 		switch (binOp->op)
 		{
@@ -241,13 +241,13 @@ static Operand genAssignment(AssignmentNode* node, ScopeNode* parent)
 				genAnd(binOp, dest, parent);
 				break;
 			default:
-				src = genExpression(node->expression, parent);
-				emit(new AssignmentInstr(dest, src));
+				src = genExpression(expr, parent);
+				emit(std::make_unique<AssignmentInstr>(dest, src));
 		}
 	}
 	else {
-		src = genExpression(node->expression, parent);
-		emit(new AssignmentInstr(dest, src));
+		src = genExpression(expr, parent);
+		emit(std::make_unique<AssignmentInstr>(dest, src));
 	}
 
 	return src;
@@ -257,67 +257,67 @@ void DeclarationNode::gen(ScopeNode* parent)
 {
 	if (this->expression == nullptr) return;
 
-	auto* assign = new AssignmentNode(this->line);
-	assign->name = this->name;
-	assign->expression = this->expression;
-	genAssignment(assign, parent);
+	genAssignment(this->line, this->name, this->expression.get(), parent);
 }
 
-Label* newLocalLabel(std::string text)
+std::unique_ptr<Label> newLocalLabel(std::string text)
 {
 	for (char c : text) {
 		if (isNumber(c)) throw_error(1, fmt::format("Labels cannot contain numbers!"));
 	}
 	if (text.back() == ':')
 		throw_error(1, fmt::format("newLocalLabel can't receive label definitions"));
-	return new Label(std::string{".L_"}.append(text.append(std::to_string(++labelCount))));
+
+	return std::make_unique<Label>(
+		std::string{".L_"}.append(text.append(std::to_string(++labelCount)))
+	);
 }
 
 void AssignmentNode::gen(ScopeNode* parent)
 {
-	genAssignment(this, parent);
+	genAssignment(this->line, this->name, this->expression.get(), parent);
 }
 
 static void genOr(BinaryOpNode* node, Operand dest, ScopeNode* parent)
 {
-	Label* ifTrue = newLocalLabel("iftrue");
-	Label* ifFalse = newLocalLabel("iffalse");
-	Label* cont = newLocalLabel("cont");
+	std::shared_ptr<Label> ifTrue = newLocalLabel("iftrue");
+	std::shared_ptr<Label> cont = newLocalLabel("cont");
+	std::shared_ptr<Label> ifFalse = newLocalLabel("iffalse");
 
-	Operand left = genExpression(node->left, parent);
-	Operand right = genExpression(node->right, parent);
+	Operand left = genExpression(node->left.get(), parent);
+	Operand right = genExpression(node->right.get(), parent);
 
-	emit(new JumpIfTrueInstr(ifTrue, left));
-	emit(new JumpIfFalseInstr(ifFalse, right));
+	emit(std::make_unique<JumpIfTrueInstr>(ifTrue, left));
+	emit(std::make_unique<JumpIfFalseInstr>(ifFalse, right));
 	emit(ifTrue->def());
-	emit(new AssignmentInstr(dest, Operand::Immediate(1)));
-	emit(new JumpInstr(cont));
+	emit(std::make_unique<AssignmentInstr>(dest, Operand::Immediate(1)));
+	emit(std::make_unique<JumpInstr>(cont));
 	emit(ifFalse->def());
-	emit(new AssignmentInstr(dest, Operand::Immediate(0)));
+	emit(std::make_unique<AssignmentInstr>(dest, Operand::Immediate(0)));
 	emit(cont->def());
 }
 
 static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent)
 {
-	Label* skip = newLocalLabel("skip");
-	Label* cont = newLocalLabel("cont");
+	std::shared_ptr<Label> skip = newLocalLabel("skip");
+	std::shared_ptr<Label> cont = newLocalLabel("cont");
 
-	Operand left = genExpression(node->left, parent);
-	Operand right = genExpression(node->right, parent);
+	Operand left = genExpression(node->left.get(), parent);
+	Operand right = genExpression(node->right.get(), parent);
 
-	emit(new JumpIfFalseInstr(skip, left));
-	emit(new JumpIfFalseInstr(skip, right));
-	emit(new AssignmentInstr(dest, Operand::Immediate(1)));
-	emit(new JumpInstr(cont));
+	emit(std::make_unique<JumpIfFalseInstr>(skip, left));
+	emit(std::make_unique<JumpIfFalseInstr>(skip, right));
+	emit(std::make_unique<AssignmentInstr>(dest, Operand::Immediate(1)));
+	emit(std::make_unique<JumpInstr>(cont));
 	emit(skip->def());
-	emit(new AssignmentInstr(dest, Operand::Immediate(0)));
+	emit(std::make_unique<AssignmentInstr>(dest, Operand::Immediate(0)));
 	emit(cont->def());
 }
 
 void IfNode::gen(ScopeNode* parent)
 {
-	Label* skip;
-	Operand expr = genExpression(this->expression, this);
+	std::shared_ptr<Label> skip;
+	Operand expr = genExpression(this->expression.get(), this);
 
 	if (this->elseBranch) {
 		skip = newLocalLabel("else");
@@ -325,7 +325,7 @@ void IfNode::gen(ScopeNode* parent)
 	else
 		skip = newLocalLabel("cont");
 
-	emit(new JumpIfFalseInstr(skip, expr));
+	emit(std::make_unique<JumpIfFalseInstr>(skip, expr));
 	genBody(this->body, this);
 	emit(skip->def());
 
@@ -333,7 +333,7 @@ void IfNode::gen(ScopeNode* parent)
 		genBody(this->elseBranch->body, parent);
 }
 
-static void genLoopStatements(std::vector<Node*> block, LoopNode* parent)
+static void genLoopStatements(std::vector<std::unique_ptr<Node>>& block, LoopNode* parent)
 {
 	for (size_t i = 0; i < block.size(); ++i)
 	{
@@ -344,11 +344,12 @@ static void genLoopStatements(std::vector<Node*> block, LoopNode* parent)
 void WhileNode::gen(ScopeNode* parent)
 {
 	(void)parent;
+
 	emit(this->startLabel->def());
-	Operand expr = genExpression(this->expression, this);
-	emit(new JumpIfFalseInstr(this->endLabel, expr));
+	Operand expr = genExpression(this->expression.get(), this);
+	emit(std::make_unique<JumpIfFalseInstr>(this->endLabel, expr));
 	genLoopStatements(this->body, this);
-	emit(new JumpInstr(this->startLabel));
+	emit(std::make_unique<JumpInstr>(this->startLabel));
 	emit(this->endLabel->def());
 }
 
@@ -358,8 +359,8 @@ void DoWhileNode::gen(ScopeNode* parent)
 
 	emit(this->startLabel->def());
 	genLoopStatements(this->body, this);
-	Operand expr = genExpression(this->expression, this);
-	emit(new JumpIfTrueInstr(this->startLabel, expr));
+	Operand expr = genExpression(this->expression.get(), this);
+	emit(std::make_unique<JumpIfTrueInstr>(this->startLabel, expr));
 	emit(this->endLabel->def());
 }
 
@@ -383,28 +384,28 @@ void ForNode::gen(ScopeNode* parent)
 	this->prologue->gen(this);
 	emit(this->startLabel->def());
 
-	if (!dynamic_cast<VoidNode*>(this->expression)) {
-		Operand expr = genExpression(this->expression, this);
-		emit(new JumpIfFalseInstr(this->endLabel, expr));
+	if (!dynamic_cast<VoidNode*>(this->expression.get())) {
+		Operand expr = genExpression(this->expression.get(), this);
+		emit(std::make_unique<JumpIfFalseInstr>(this->endLabel, expr));
 	}
 	genLoopStatements(this->body, this);
 	emit(this->epilogueLabel->def());
 
 	this->epilogue->gen(this);
-	emit(new JumpInstr(this->startLabel));
+	emit(std::make_unique<JumpInstr>(this->startLabel));
 	emit(this->endLabel->def());	
 }
 
 void BreakNode::gen(ScopeNode* parent)
 {
 	(void)parent;
-	emit(new JumpInstr(this->findParentLoop(this->parent)->endLabel));
+	emit(std::make_unique<JumpInstr>(this->findParentLoop(this->parent)->endLabel));
 }
 
 void ContinueNode::gen(ScopeNode* parent)
 {
 	(void)parent;
-	Label* jmpLabel;
+	std::shared_ptr<Label> jmpLabel;
 	LoopNode* parentLoop = this->findParentLoop(this->parent);
 	if (auto* forl = dynamic_cast<ForNode*>(parentLoop)) {
 		jmpLabel = forl->epilogueLabel;
@@ -412,7 +413,7 @@ void ContinueNode::gen(ScopeNode* parent)
 	else {
 		jmpLabel = parentLoop->startLabel;
 	}
-	emit(new JumpInstr(jmpLabel));
+	emit(std::make_unique<JumpInstr>(jmpLabel));
 }
 
 Operand genCall(CallNode* node, ScopeNode* parent)
@@ -422,15 +423,15 @@ Operand genCall(CallNode* node, ScopeNode* parent)
 
 	for (size_t i = 0; i < node->args.size(); ++i)
 	{
-		argRegs.push_back(genExpression(node->args[i], parent));
+		argRegs.push_back(genExpression(node->args[i].get(), parent));
 	}
 	for (size_t i = 0; i < argRegs.size(); ++i)
 	{
-		emit(new LoadArg(i, argRegs[i]));
+		emit(std::make_unique<LoadArg>(i, argRegs[i]));
 	}
 	
-	emit(new CallInstr(node->name)); 
-	emit(new SaveRet(retReg));
+	emit(std::make_unique<CallInstr>(node->name)); 
+	emit(std::make_unique<SaveRet>(retReg));
 	return retReg;
 }
 
@@ -439,7 +440,7 @@ void FuncNode::gen(ScopeNode* parent)
 	(void)parent;
 	if (!this->isDef) return;
 
-	emit(new FuncPrologueInstr(this->name));
+	emit(std::make_unique<FuncPrologueInstr>(this->name));
 	size_t index = ir.size() - 1;
 
 	for (size_t i = 0; i < this->paramList.size(); i++)
@@ -449,15 +450,15 @@ void FuncNode::gen(ScopeNode* parent)
 										attrs.offset,
 										attrs.type->size);
 
-		emit(new SaveArg(i, op));
+		emit(std::make_unique<SaveArg>(i, op));
 	}
 	genBody(this->body, this);
 
 	this->frameSize = abs(this->frameSize);
 	int pad = this->frameSize % 16;
 	this->frameSize = this->frameSize + 16 - (pad ? pad : 16);
-	static_cast<FuncPrologueInstr*>(ir.at(index))->frameSize = this->frameSize;
-	emit(new FuncEpilogueInstr(this->name));
+	static_cast<FuncPrologueInstr*>(ir.at(index).get())->frameSize = this->frameSize;
+	emit(std::make_unique<FuncEpilogueInstr>(this->name));
 }
 
 void UnaryOpNode::gen(ScopeNode* parent)
@@ -493,17 +494,17 @@ void CallNode::gen(ScopeNode* parent)
 
 static Operand emitPrefix(UnaryOpNode* node, ScopeNode* parent)
 {
-	auto* v = static_cast<VariableNode*>(node->expression);
+	auto* v = static_cast<VariableNode*>(node->expression.get());
 	Attrs var = parent->getSymbol(v->name, v->line, parent);
 	Operand vreg = Operand::Variable(v->name, var.offset, var.type->size);
-	emit(new UnaryInstr(vreg, vreg, node->op));
+	emit(std::make_unique<UnaryInstr>(vreg, vreg, node->op));
 	return vreg;
 }
 
 static Operand emitPostFix(UnaryOpNode* node, ScopeNode* parent)
 {
 	Operand vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
-	Operand src = genExpression(node->expression, parent);
-	emit(new UnaryInstr(vreg, src, node->op));
+	Operand src = genExpression(node->expression.get(), parent);
+	emit(std::make_unique<UnaryInstr>(vreg, src, node->op));
 	return vreg;
 }

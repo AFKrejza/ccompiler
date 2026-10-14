@@ -8,11 +8,11 @@ class Instruction {
 	public:
 		virtual ~Instruction() = default;
 
-		virtual void print(int indent) {
+		virtual void print(int indent) const  {
 			(void) indent;
 		}
 
-		virtual std::string typeName() {
+		virtual std::string typeName() const {
 			return "Instruction";
 		}
 
@@ -72,8 +72,10 @@ class BinaryInstr : public Instruction {
 			this->left = left;
 			this->right = right;
 		}
+
+		~BinaryInstr() = default;
 		
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("BinaryInstr {} = {} {} {}\n", operandToStr(dest),
 													  operandToStr(left),
@@ -81,7 +83,7 @@ class BinaryInstr : public Instruction {
 													  operandToStr(right));
 		}
 		
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "BinaryInstr";
 		}
 		
@@ -100,7 +102,9 @@ class UnaryInstr : public Instruction {
 			this->op = op;
 		}
 
-		void print(int indent) override {
+		~UnaryInstr() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("UnaryInstr {} {}\n", unaryOpToStr(op), operandToStr(dest));
 		}
@@ -117,12 +121,14 @@ class ReturnInstr : public Instruction {
 			this->operand = operand;
 		}
 
-		void print(int indent) override {
+		~ReturnInstr() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("Return {}\n", operandToStr(operand));
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "ReturnInstr";
 		}
 		
@@ -139,12 +145,14 @@ class AssignmentInstr : public Instruction {
 			this->src = src;
 		}
 
-		void print(int indent) override {
+		~AssignmentInstr() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("Assign {} = {}\n", operandToStr(dest), operandToStr(src));
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "AssignmentInstr";
 		}
 		void code() override;
@@ -158,16 +166,18 @@ class Label : public Instruction {
 			this->name = name;
 		}
 
-		Label* def() {
-			return new Label(std::string{this->name}.append(":"));
+		~Label() = default;
+
+		std::unique_ptr<Label> def() const {
+			return std::make_unique<Label>(std::string{this->name}.append(":"));
 		}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("{}\n", name);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return fmt::format("Label");
 		}
 
@@ -176,36 +186,41 @@ class Label : public Instruction {
 
 class JumpInstr : public Instruction {
 	public:
-		Label* label;
+		std::shared_ptr<Label> label;
 
-		JumpInstr(Label* label) : label(label) {}
+		JumpInstr(std::shared_ptr<Label> l) : label(std::move(l)) {}
 
-		void print(int indent) override {
+		~JumpInstr() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("JumpInstr {}\n", label->name);
 		}
 		
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "JumpInstr";
 		}
 
 		void code() override;
 };
 
+// TODO: combine into one JumpIfInstr
 class JumpIfTrueInstr : public JumpInstr {
 	public:
 		Operand operand;
 
-		JumpIfTrueInstr(Label* label, Operand operand)
+		JumpIfTrueInstr(std::shared_ptr<Label> label, Operand operand)
 		:	JumpInstr(label),
 			operand(operand) {}
 
-		void print(int indent) override {
+		~JumpIfTrueInstr() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("JumpIfTrue {} {}\n", operandToStr(operand), label->name);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "JumpIfTrueInstr";
 		}
 
@@ -216,39 +231,43 @@ class JumpIfFalseInstr : public JumpInstr {
 	public:
 		Operand operand;
 
-		JumpIfFalseInstr(Label* label, Operand operand)
+		JumpIfFalseInstr(std::shared_ptr<Label> label, Operand operand)
 		:	JumpInstr(label),
 			operand(operand) {}
 
-		void print(int indent) override {
+		~JumpIfFalseInstr() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("JumpIfFalse {} {}\n", operandToStr(operand), label->name);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "JumpIfFalseInstr";
 		}
 
 		void code() override;
 };
 
-Label* newLocalLabel(std::string text);
+std::unique_ptr<Label> newLocalLabel(std::string text);
 
 class FuncPrologueInstr : public Instruction {
 	public:
-		Label* name;
+		std::unique_ptr<Label> name;
 		int frameSize;
 
 		FuncPrologueInstr(std::string name) {
-			this->name = new Label(name);
+			this->name = std::make_unique<Label>(name);
 		}
 
-		void print(int indent) override {
+		~FuncPrologueInstr() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("FuncPrologueInstr {}\n", name->name);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "FuncPrologueInstr";
 		}
 		void code() override;
@@ -260,12 +279,14 @@ class FuncEpilogueInstr : public Instruction {
 
 		FuncEpilogueInstr(std::string name) : name(name) {}
 
-		void print(int indent) override {
+		~FuncEpilogueInstr() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("FuncEpilogueInstr {}\n", name);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "FuncEpilogueInstr";
 		}
 		void code() override;
@@ -277,12 +298,14 @@ class CallInstr : public Instruction {
 
 		CallInstr(std::string name) : name(name) {}
 
-		void print(int indent) override {
+		~CallInstr() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("CallInstr {}\n", name);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "CallInstr";
 		}
 		void code() override;
@@ -295,12 +318,14 @@ class LoadArg : public Instruction {
 
 		LoadArg(size_t index, Operand src) : index(index), src(src) {}
 
-		void print(int indent) override {
+		~LoadArg() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("LoadArg {} = {}\n", index, operandToStr(src));
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "LoadArg";
 		}
 
@@ -313,17 +338,20 @@ class SaveRet : public Instruction {
 		
 		SaveRet(Operand dest) : dest(dest) {}
 
-		void print(int indent) override {
+		~SaveRet() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("Save eax to {}\n", dest.offset);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "SaveRet";
 		}
 		void code() override;
 };
 
+// basically identical to LoadArg
 class SaveArg : public Instruction {
 	public:
 		size_t index;
@@ -331,12 +359,14 @@ class SaveArg : public Instruction {
 
 		SaveArg(size_t index, Operand dest) : index(index), dest(dest) {}
 
-		void print(int indent) override {
+		~SaveArg() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("SaveArg {} = arg {}\n", operandToStr(dest), index);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "SaveArg";
 		}
 

@@ -1,6 +1,9 @@
 CXX := g++
-CXXFLAGS := -Wall -Werror -Wextra -g -Wpedantic -Wreturn-type -Wuninitialized
- #-fsanitize=address,undefined #-Wimplicit-fallthrough #-Wswitch-enum #-Wshadow
+# SANITIZE := -fsanitize=address,undefined 
+CXXFLAGS := -Wall -Werror -Wextra -g -Wpedantic -Wreturn-type -Wuninitialized \
+			$(SANITIZE)
+#			-Wpessimizing-move
+# 			-Wimplicit-fallthrough #-Wswitch-enum #-Wshadow
 
 # 	makefile flags:
 # 	-DLEX to print token list
@@ -8,7 +11,8 @@ CXXFLAGS := -Wall -Werror -Wextra -g -Wpedantic -Wreturn-type -Wuninitialized
 # 	-DTAC to print TAC IR
 # 	-DASM to print assembly
 MYFLAGS := -DTAC -DAST -DASM #-DLEX #-O2
-LDFLAGS := -lfmt
+LDFLAGS := $(SANITIZE)
+LDLIBS := -lfmt
 
 BUILD := build
 SOURCES := main.cpp lexer.cpp parser.cpp sema.cpp taco.cpp codegen.cpp
@@ -27,7 +31,7 @@ CFLAGS := -S -O0 -masm=intel -fno-asynchronous-unwind-tables -fcf-protection=non
 all: rat
 
 rat: $(OBJECTS)
-	$(CXX) $(OBJECTS) -o $@ $(LDFLAGS)
+	$(CXX) $(LDFLAGS) $(OBJECTS) $(LDLIBS) -o $@
 
 $(BUILD)/%.o: %.cpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(MYFLAGS) -MMD -MP -c $< -o $@

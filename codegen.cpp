@@ -25,7 +25,9 @@ static std::string operandText(const Operand& operand);
 
 std::ofstream output;
 
-std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode* ast)
+std::string codegen(std::string fileName,
+					std::vector<std::unique_ptr<Instruction>> ir,
+					GodNode* ast)
 {
 	// TODO: have it use the user-defined output name
 	(void)ast;
@@ -45,7 +47,7 @@ std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode*
 	
 	emitProgramStart();
 	
-	for (Instruction* i : ir)
+	for (const auto& i : ir)
 	{
 		i->code();
 	}

@@ -21,10 +21,12 @@
 
 static std::string preprocess(std::string fileName);
 void lexer(std::string src);
-GodNode *parser();
-GodNode *sema(GodNode *ast);
-std::vector<Instruction*> taco(GodNode *program);
-std::string codegen(std::string fileName, std::vector<Instruction*> ir, GodNode* ast);
+std::unique_ptr<GodNode> parser();
+void sema(GodNode* prog);
+std::vector<std::unique_ptr<Instruction>> taco(GodNode *program);
+std::string codegen(std::string fileName,
+					std::vector<std::unique_ptr<Instruction>> ir,
+					GodNode* ast);
 std::string readFile(std::string filename);
 void printTokens();
 
@@ -48,23 +50,24 @@ int main(int argc, char *argv[])
 	printTokens();
 	#endif
 
-	GodNode *ast = parser();
-	GodNode *vAst = sema(ast); // validated ast
+	std::unique_ptr<GodNode> ast = parser();
+
+	sema(ast.get());
 
 	#ifdef AST
-	vAst->printChildren(1);
+	ast->printChildren(1);
 	fmt::print("\n");
 	#endif
 
-	std::vector<Instruction*> ir = taco(vAst);
+	std::vector<std::unique_ptr<Instruction>> ir = taco(ast.get());
 
 	#ifdef TAC
-	for (Instruction *i : ir) {
+	for (const std::unique_ptr<Instruction>& i : ir) {
 		i->print(1);
 	}
 	#endif
 
-	std::string outputFilename = codegen(fileName, ir, vAst);
+	std::string outputFilename = codegen(fileName, std::move(ir), ast.get());
 
 	#ifdef ASM
 	std::string result = readFile(outputFilename);
@@ -85,7 +88,7 @@ void throw_error_line(int code, int line, std::string msg)
 
 void throw_error(int code, std::string msg)
 {
-	fmt::print("Error {}, {}\n", code, msg);
+	fmt::print("Error {} : {}\n", code, msg);
 	exit(code);
 }
 

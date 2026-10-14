@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fmt/core.h>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -14,20 +15,27 @@ class Parameter {
 	public:
 		int line;
 		std::string name;
-		Type *type;
+		std::unique_ptr<Type> type;
 		int offset; // to save to stack to prevent clobbering
 
-		Parameter(int line, std::string name, Type *type)
+		Parameter(int line, std::string name, std::unique_ptr<Type> type)
 		:	line(line),
-			name(name),
-			type(type) {}
+			name(name) {
+				fmt::print("param created\n");
+				this->type = std::move(type);
+			}
+		
+		~Parameter() = default;
 
-		void print(int indent) {
+		Parameter(Parameter&&) = default; //  move 
+		Parameter& operator=(Parameter&&) = default; // copy
+
+		void print(int indent) const {
 			(void) indent;
 			fmt::print("{} {}", type->typeName(), name);
 		}
 
-		void printChildren(int indent) {
+		void printChildren(int indent) const {
 			print(indent);
 		}
 };
@@ -37,20 +45,22 @@ class ScopeNode;
 class Node {
 	public:
 		int line;
-		Type *type = nullptr; // yeah it's not right but like man whatever
+		std::unique_ptr<Type> type = nullptr; // yeah it's not right but like man whatever
 
 		Node(int line) : line(line) {}
 
-		virtual void print(int indent) {
+		virtual ~Node() = default;
+
+		virtual void print(int indent) const {
 			printIndentLines(indent);
 			fmt::print("{}\n", typeName());
 		}
 
-		virtual void printChildren(int indent) {
+		virtual void printChildren(int indent) const {
 			(void) indent;
 		}
 
-		virtual std::string typeName() {
+		virtual std::string typeName() const {
 			return "Node";
 		}
 
@@ -65,28 +75,24 @@ class Node {
 			throw_error(1, "gen called on base Node");
 		}
 		
-		// TODO: add destructors to all classes
-		virtual ~Node() = default;
-
-		
-		virtual void killChildren() {}
 };
 
 class VoidNode : public Node {
 	public:
 		VoidNode(int line) : Node(line) { }
 
-		void print(int indent) override {
+		~VoidNode() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("{}\n", typeName());
 		}
-		void printChildren(int indent) {
+
+		void printChildren(int indent) const {
 			(void)indent;
 		}
-		void killChildren() override {
-			// TODO: add kill self to all
-		}
-		std::string typeName() {
+
+		std::string typeName() const {
 			return "VoidNode";
 		}
 
@@ -97,10 +103,10 @@ class FuncNode;
 
 // for symbol tables
 struct Attrs {
-	Type* type;
+	Type* type; // points to its Node's type. Should be okay since it has the same lifetime.
 	int offset;
 	int line; // declaration line
-	FuncNode* func = nullptr;
+	FuncNode* func = nullptr; // same reasoning as Type
 
 	Attrs(Type* type, int offset, int line, FuncNode* func = nullptr)
 	:	type(type),
@@ -113,12 +119,12 @@ class GodNode;
 
 class StatementNode : public Node {
 	public:
-		std::vector<Node*> body;
+		std::vector<std::unique_ptr<Node>> body;
 		ScopeNode* parent = nullptr;
 
-		StatementNode(int line, ScopeNode* parent) : Node(line) {
-			this->parent = parent;
-		}
+		StatementNode(int line, ScopeNode* parent) : Node(line), parent(parent) {}
+
+		~StatementNode() = default;
 };
 
 class ScopeNode : public StatementNode {
@@ -151,11 +157,11 @@ class ScopeNode : public StatementNode {
 			(void)indent;
 			throw_error(1, "Never should have come here (ScopeNode->print())");
 		}
-		virtual void printChildren(int indent) {
+		virtual void printChildren(int indent) const {
 			(void)indent;
 			throw_error(1, ":sobbingemoji: (ScopeNode->printChildren())");
 		}
-		virtual std::string typeName() {
+		virtual std::string typeName() const {
 			return "ScopeNode";
 		}
 
@@ -165,21 +171,23 @@ class ScopeNode : public StatementNode {
 
 class GodNode : public ScopeNode {
 	public:
-		GodNode(int line, ScopeNode* parent = nullptr) : ScopeNode(line, parent) {}
+		GodNode(int line = 0, ScopeNode* parent = nullptr) : ScopeNode(line, parent) {}
 
-		void printChildren(int indent) override {
+		~GodNode() = default;
+
+		void printChildren(int indent) const override {
 			print(indent);
-			for (Node *i : body) {
+			for (const std::unique_ptr<Node>& i : body) {
 				i->printChildren(indent + 1);
 			}
 		}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("{}\n", typeName());
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "GodNode";
 		}
 
@@ -193,24 +201,33 @@ class GodNode : public ScopeNode {
 class FuncNode : public ScopeNode {
 	public:
 		std::string name;
-		Type *returnType;
+		std::unique_ptr<Type> returnType;
 		std::vector<Parameter> paramList;
 		bool isDef;
 		bool isExtern;
+		std::unique_ptr<Type> type = nullptr;
 
 		FuncNode(int line,
-					ScopeNode* parent,
-					std::string name,
-					Type *returnType,
-					std::vector<Parameter> paramList,
-					bool isDef,
-					bool isExtern)
-			: ScopeNode(line, parent), name(name), returnType(returnType),
-				paramList(paramList), isDef(isDef), isExtern(isExtern) {
-			this->type = new FuncDefType();
-		}
+				 ScopeNode* parent,
+				 std::string name,
+				 std::unique_ptr<Type> returnType,
+				 std::vector<Parameter> paramList,
+				 bool isDef,
+				 bool isExtern)
+			: ScopeNode(line, parent),
+			name(name),
+			returnType(std::move(returnType)),
+			paramList(std::move(paramList)),
+			isDef(isDef),
+			isExtern(isExtern)
+			{
+				this->type = std::make_unique<FuncType>();
+			}
 
-		void print(int indent) override {
+		~FuncNode() = default;
+		FuncNode(FuncNode&&) = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("{} {} {} (", typeName(), returnType->typeName(), name);
 			for (size_t i = 0; i < paramList.size(); ++i)
@@ -221,27 +238,20 @@ class FuncNode : public ScopeNode {
 			fmt::print(")\n");
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			print(indent);
-			for (Node *i : body) {
+			for (const std::unique_ptr<Node>& i : body) {
 				i->printChildren(indent + 1);
 			}
 		}
 
-		void killChildren() override {
-			for (Node *i : body) {
-				i->killChildren();
-			}
-			delete this;
-		}
-
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "FuncNode";
 		}
 
 		void gen(ScopeNode* parent) override;
 
-		int getFrameSize() { return this->frameSize; }
+		int getFrameSize() const { return this->frameSize; }
 
 		int changeFrameSize(int size) override {
 			if (size < 0)
@@ -266,33 +276,29 @@ std::string binaryOpToStr(BinaryOp op);
 
 class BinaryOpNode : public Node {
 	public:
-		Node *left;
-		Node *right;
+		std::unique_ptr<Node> left;
+		std::unique_ptr<Node> right;
 		BinaryOp op;
 
 		BinaryOpNode(int line, TokenType op) : Node(line) {
 			this->op = TokenTypeToBinaryOp(op);
 		}
 
-		void printChildren(int indent) override {
+		~BinaryOpNode() = default;
+
+		void printChildren(int indent) const override {
 			print(indent);
 			if (left) left->printChildren(indent + 1);
 			if (right) right->printChildren(indent + 1);
 		}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("{} {}\n", typeName(), binaryOpToStr(op));
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "BinaryOpNode";
-		}
-
-		void killChildren() override {
-			left->killChildren();
-			right->killChildren();
-			delete this;
 		}
 
 		void eval(ScopeNode* parent) override;
@@ -305,30 +311,27 @@ std::string unaryOpToStr(UnaryOp op);
 class UnaryOpNode : public Node {
 	public:
 		UnaryOp op;
-		Node* expression;
+		std::unique_ptr<Node> expression;
 
-		UnaryOpNode(int line, TokenType op, Node* expression) : Node(line) {
-			this->op = TokenTypeToUnaryOp(op);
-			this->expression = expression;
-		}
+		UnaryOpNode(int line, TokenType op, std::unique_ptr<Node> expression) :
+			Node(line),
+			op(TokenTypeToUnaryOp(op)),
+			expression(std::move(expression)) {}
+
+		~UnaryOpNode() = default;
 		
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			print(indent);
 			expression->printChildren(indent + 1);
 		}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("{} {}\n", this->typeName(), unaryOpToStr(op));
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "UnaryOpNode";
-		}
-
-		void killChildren() override {
-			expression->killChildren();
-			delete this;
 		}
 
 		void eval(ScopeNode* parent) override;
@@ -343,15 +346,19 @@ class ImmediateNode : public Node {
 			this->value = value;
 		}
 
-		std::string typeName() override {
+		ImmediateNode(ImmediateNode&&) = default;
+
+		~ImmediateNode() = default;
+
+		std::string typeName() const override {
 			return "ImmediateNode";
 		}
 
-		void printChildren(int indent) {
+		void printChildren(int indent) const {
 			print(indent);
 		}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("ImmediateNode {}\n", value);
 		}
@@ -363,21 +370,23 @@ class ImmediateNode : public Node {
 class VariableNode : public Node {
 	public:
 		std::string name;
-		Type *type;
+		std::unique_ptr<Type> type;
 
 		VariableNode(int line, std::string name) : Node(line) {
 			this->name = name;
 		}
 
-		std::string typeName() override {
+		~VariableNode() = default;
+
+		std::string typeName() const override {
 			return "VariableNode";
 		}
 
-		void printChildren(int indent) {
+		void printChildren(int indent) const {
 			print(indent);
 		}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("VariableNode {}\n", name);
 		}
@@ -388,27 +397,24 @@ class VariableNode : public Node {
 
 class ReturnNode : public StatementNode {
 	public:
-		Node *expression = nullptr;
+		std::unique_ptr<Node> expression = nullptr;
 
 		ReturnNode(int line, ScopeNode* parent) : StatementNode(line, parent) {}
 
-		std::string typeName() override {
+		~ReturnNode() = default;
+
+		std::string typeName() const override {
 			return "ReturnNode";
 		}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("{} \n", typeName());
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			print(indent);
 			expression->printChildren(indent + 1);
-		}
-
-		void killChildren() override {
-			delete expression;
-			delete this;
 		}
 
 		FuncNode* findParentFunction(ScopeNode* parent)
@@ -428,22 +434,24 @@ class ReturnNode : public StatementNode {
 class AssignmentNode : public Node {
 	public:
 		std::string name;
-		Node* lhs = nullptr;
-		Node* expression = nullptr;
+		std::unique_ptr<Node> lhs = nullptr;
+		std::unique_ptr<Node> expression = nullptr;
 
 		AssignmentNode(int line)
 		:	Node(line) {}
 
-		std::string typeName() override {
+		~AssignmentNode() = default;
+
+		std::string typeName() const override {
 			return "AssignmentNode";
 		}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("{} {} \n", typeName(), name);
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			print(indent);
 			expression->printChildren(indent + 1);
 		}
@@ -455,29 +463,29 @@ class AssignmentNode : public Node {
 class DeclarationNode : public Node {
 	public:
 		std::string name;
-		Type* type;
-		Node* expression = nullptr;
+		std::unique_ptr<Type> type;
+		std::unique_ptr<Node> expression = nullptr;
 
 		DeclarationNode(int line,
 						std::string name,
-						Type* type,
-						Node* expression = nullptr) : Node(line)
-		{
-			this->name = name;
-			this->type = type;
-			this->expression = expression;
-		}
+						std::unique_ptr<Type> type,
+						Node* expression = nullptr) : 
+			Node(line), name(name),
+			type(std::move(type)),
+			expression(std::move(expression)) {}
 
-		std::string typeName() override {
+		~DeclarationNode() = default;
+
+		std::string typeName() const override {
 			return "DeclarationNode";
 		}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("{} {} \n", typeName(), name);
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			print(indent);
 			if (expression != nullptr)
 				expression->printChildren(indent + 1);
@@ -491,20 +499,23 @@ class ElseNode : public ScopeNode {
 	public:		
 		ElseNode(int line, ScopeNode* parent) : ScopeNode(line, parent) {}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("Else\n");
 			printIndentLines(indent + 1);
 			fmt::print(":>\n");
 		}
 
-		void printChildren(int indent) override {
+		~ElseNode() = default;
+
+		void printChildren(int indent) const override {
 			print(indent);
-			for (Node* node : body)
-				node->printChildren(indent + 2);
+			for (const std::unique_ptr<Node>& i : body) {
+				i->printChildren(indent + 2);
+			}
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "ElseNode";
 		}
 
@@ -514,14 +525,16 @@ class ElseNode : public ScopeNode {
 
 class IfNode : public ScopeNode {
 	public:
-		Node* expression;
-		ElseNode* elseBranch = NULL;
+		std::unique_ptr<Node> expression;
+		std::unique_ptr<ElseNode> elseBranch = NULL;
 
-		IfNode(int line, ScopeNode* parent, Node* expression)
+		IfNode(int line, ScopeNode* parent, std::unique_ptr<Node> expression)
 		:	ScopeNode(line, parent),
-			expression(expression) {}
+			expression(std::move(expression)) {}
 
-		void print(int indent) override {
+		~IfNode() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("If\n");
 			expression->printChildren(indent + 1);
@@ -529,15 +542,16 @@ class IfNode : public ScopeNode {
 			fmt::print(":>\n");
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			print(indent);
-			for (Node* node : body)
-				node->printChildren(indent + 2);
+			for (const std::unique_ptr<Node>& i : body) {
+				i->printChildren(indent + 2);
+			}
 			if (elseBranch)
 				elseBranch->printChildren(indent);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "IfNode";
 		}
 
@@ -547,46 +561,47 @@ class IfNode : public ScopeNode {
 
 class LoopNode : public ScopeNode {
 	public:
-		Node* expression;
-		Label* endLabel;
-		Label* startLabel;
+		std::unique_ptr<Node> expression;
+		std::shared_ptr<Label> endLabel;
+		std::shared_ptr<Label> startLabel;
 
-		LoopNode(int line, ScopeNode* parent, Node* expression, std::string loop)
+		LoopNode(int line, ScopeNode* parent, std::unique_ptr<Node> expression, std::string loop)
 		:	ScopeNode(line, parent),
-			expression(expression) {
+			expression(std::move(expression)) {
 				startLabel = newLocalLabel(loop);
 				endLabel = newLocalLabel(std::string{loop}.append("_end"));
 			}
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			(void)indent;
 			throw_error(1, "Tryna print() LoopNode");
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			(void)indent;
 			throw_error(1, "Tryna printChildren() LoopNode");
 		}
 
-		static void printLoopChildren(LoopNode* loop, int indent) {
+		static void printLoopChildren(const LoopNode* loop, int indent) {
 			loop->print(indent);
-			for (Node* node : loop->body)
-				node->printChildren(indent + 2);
+			for (const std::unique_ptr<Node>& i : loop->body) {
+				i->printChildren(indent + 2);
+			}
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "LoopNode";
 		}
 };
 
 class WhileNode : public LoopNode {
 	public:
-		WhileNode(int line, ScopeNode* parent, Node* expression)
-		:	LoopNode(line, parent, expression, "while") {
+		WhileNode(int line, ScopeNode* parent, std::unique_ptr<Node> expression)
+		:	LoopNode(line, parent, std::move(expression), "while") {}
 
-		}
+		~WhileNode() = default;
 
-		void print(int indent) override {
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("While\n");
 			expression->printChildren(indent + 1);
@@ -594,11 +609,11 @@ class WhileNode : public LoopNode {
 			fmt::print(":>\n");
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			printLoopChildren(this, indent + 2);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "WhileNode";
 		}
 
@@ -608,10 +623,12 @@ class WhileNode : public LoopNode {
 
 class DoWhileNode : public LoopNode {
 	public:
-		DoWhileNode(int line, ScopeNode* parent, Node* expression = nullptr)
-		:	LoopNode(line, parent, expression, "while") {}
+		DoWhileNode(int line, ScopeNode* parent, std::unique_ptr<Node> expression = nullptr)
+		:	LoopNode(line, parent, std::move(expression), "while") {}
 
-		void print(int indent) override {
+		~DoWhileNode() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("DoWhile\n");
 			expression->printChildren(indent + 1);
@@ -619,11 +636,11 @@ class DoWhileNode : public LoopNode {
 			fmt::print(":>\n");
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			printLoopChildren(this, indent + 2);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "DoWhileNode";
 		}
 
@@ -633,23 +650,25 @@ class DoWhileNode : public LoopNode {
 
 class ForNode : public LoopNode {
 	public:
-		Node* prologue;
-		Node* epilogue;
-		Label* epilogueLabel;
+		std::shared_ptr<Node> prologue;
+		std::shared_ptr<Node> epilogue;
+		std::shared_ptr<Label> epilogueLabel;
 
 		ForNode(int line, 
 				ScopeNode* parent, 
-				Node* expression = nullptr, 
-				Node* prologue = nullptr, 
-				Node* epilogue = nullptr)
+				std::unique_ptr<Node> expression,
+				std::unique_ptr<Node> prologue, 
+				std::unique_ptr<Node> epilogue)
 		:
-			LoopNode(line, parent, expression, "for"),
-			prologue(prologue), epilogue(epilogue)
+			LoopNode(line, parent, std::move(expression), "for"),
+			prologue(std::move(prologue)), epilogue(std::move(epilogue))
 		{
 			epilogueLabel = newLocalLabel("for_epilogue");
 		}
 
-		void print(int indent) override {
+		~ForNode() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("For\n");
 			printIndentLines(indent);
@@ -662,11 +681,11 @@ class ForNode : public LoopNode {
 			fmt::print(":>\n");
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			printLoopChildren(this, indent + 2);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "ForNode";
 		}
 
@@ -678,16 +697,18 @@ class BreakNode : public StatementNode {
 	public:
 		BreakNode(int line, ScopeNode* parent) : StatementNode(line, parent) {}
 
-		void print(int indent) override {
+		~BreakNode() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("Break\n");
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			print(indent);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "BreakNode";
 		}
 		
@@ -710,21 +731,22 @@ class ContinueNode : public StatementNode {
 	public:
 		ContinueNode(int line, ScopeNode* parent) : StatementNode(line, parent) {}
 
-		void print(int indent) override {
+		~ContinueNode() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("Continue\n");
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			print(indent);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "ContinueNode";
 		}
 		
-		LoopNode* findParentLoop(ScopeNode* parent)
-		{
+		LoopNode* findParentLoop(ScopeNode* parent) const {
 			if (parent == nullptr)
 				return nullptr;
 			else if (auto* loopy = dynamic_cast<LoopNode*>(parent))
@@ -740,22 +762,24 @@ class ContinueNode : public StatementNode {
 class CallNode : public StatementNode {
 	public:
 		std::string name;
-		std::vector<Node*> args;
+		std::vector<std::unique_ptr<Node>> args;
 
 		CallNode(int line, ScopeNode* parent, std::string name)
 		:	StatementNode(line, parent),
 			name(name) {}
 
-		void print(int indent) override {
+		~CallNode() = default;
+
+		void print(int indent) const override {
 			printIndentLines(indent);
 			fmt::print("Call {}\n", name);
 		}
 
-		void printChildren(int indent) override {
+		void printChildren(int indent) const override {
 			print(indent);
 		}
 
-		std::string typeName() override {
+		std::string typeName() const override {
 			return "CallNode";
 		}
 
