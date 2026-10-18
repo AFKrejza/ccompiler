@@ -23,9 +23,12 @@ static Operand emitPostFix(UnaryOpNode* node, ScopeNode* parent);
 static int current = 0; // temp register
 static int labelCount = 0;
 static std::vector<std::unique_ptr<Instruction>> ir;
+static GodNode* program;
 
-std::vector<std::unique_ptr<Instruction>> taco(GodNode *program)
+std::vector<std::unique_ptr<Instruction>> taco(GodNode *prog)
 {
+	program = prog;
+
 	for (const std::unique_ptr<Node>& node : program->body)
 	{
 		node->gen(program);
@@ -141,37 +144,6 @@ void ReturnNode::gen(ScopeNode* parent)
 	emit(std::make_unique<ReturnInstr>(dest));
 }
 
-BinaryOp TokenTypeToBinaryOp(TokenType op) {
-	switch (op)
-	{
-		case PLUS:
-			return BinaryOp::ADD;
-		case MINUS:
-			return BinaryOp::SUB;
-		case ASTERISK:
-			return BinaryOp::MUL;
-		case LOGICAL_AND:
-			return BinaryOp::LOGICAL_AND;
-		case LOGICAL_OR:
-			return BinaryOp::LOGICAL_OR;
-		case EQUAL_TO:
-			return BinaryOp::EQUAL_TO;
-		case NOT_EQUAL:
-			return BinaryOp::NOT_EQUAL;
-		case LESS_THAN:
-			return BinaryOp::LESS_THAN;
-		case LESSER_OR_EQUAL:
-			return BinaryOp::LESSER_OR_EQUAL;
-		case GREATER_THAN:
-			return BinaryOp::GREATER_THAN;
-		case GREATER_OR_EQUAL:
-			return BinaryOp::GREATER_OR_EQUAL;
-		default:
-			throw_error(1, fmt::format("Invalid TokenType to BinaryOp conversion: type {}", op));
-			exit(1);
-	}
-}
-
 std::string binaryOpToStr(BinaryOp op) {
 	switch (op) {
 		case BinaryOp::ADD:
@@ -201,23 +173,6 @@ std::string binaryOpToStr(BinaryOp op) {
 
 		default:
 			throw_error(1, "Error in BinaryInstr->toStr: Invalid operator");
-			exit(1);
-	}
-}
-
-std::string operandToStr(Operand operand)
-{
-	switch (operand.kind)
-	{
-		case OperandKind::Immediate:
-			return fmt::format("Immediate({})", operand.val);
-		case OperandKind::Temp:
-			return fmt::format("Temp({}, {})", operand.val, operand.offset);
-		case OperandKind::Variable:
-			return fmt::format("Variable({}, {})", operand.name, operand.offset);
-		default:
-			fmt::print("\nOperand: {}\n", operand.name, operand.offset, operand.size, operand.val);
-			throw_error(1, "Operand has invalid kind. Hello??");
 			exit(1);
 	}
 }
@@ -287,8 +242,8 @@ static void genOr(BinaryOpNode* node, Operand dest, ScopeNode* parent)
 	Operand left = genExpression(node->left.get(), parent);
 	Operand right = genExpression(node->right.get(), parent);
 
-	emit(std::make_unique<JumpIfTrueInstr>(ifTrue, left));
-	emit(std::make_unique<JumpIfFalseInstr>(ifFalse, right));
+	emit(std::make_unique<JumpIfInstr>(true, ifTrue, left));
+	emit(std::make_unique<JumpIfInstr>(false, ifFalse, right));
 	emit(ifTrue->def());
 	emit(std::make_unique<AssignmentInstr>(dest, Operand::Immediate(1)));
 	emit(std::make_unique<JumpInstr>(cont));
@@ -305,8 +260,8 @@ static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent)
 	Operand left = genExpression(node->left.get(), parent);
 	Operand right = genExpression(node->right.get(), parent);
 
-	emit(std::make_unique<JumpIfFalseInstr>(skip, left));
-	emit(std::make_unique<JumpIfFalseInstr>(skip, right));
+	emit(std::make_unique<JumpIfInstr>(false, skip, left));
+	emit(std::make_unique<JumpIfInstr>(false, skip, right));
 	emit(std::make_unique<AssignmentInstr>(dest, Operand::Immediate(1)));
 	emit(std::make_unique<JumpInstr>(cont));
 	emit(skip->def());
@@ -325,7 +280,7 @@ void IfNode::gen(ScopeNode* parent)
 	else
 		skip = newLocalLabel("cont");
 
-	emit(std::make_unique<JumpIfFalseInstr>(skip, expr));
+	emit(std::make_unique<JumpIfInstr>(false, skip, expr));
 	genBody(this->body, this);
 	emit(skip->def());
 
@@ -347,7 +302,7 @@ void WhileNode::gen(ScopeNode* parent)
 
 	emit(this->startLabel->def());
 	Operand expr = genExpression(this->expression.get(), this);
-	emit(std::make_unique<JumpIfFalseInstr>(this->endLabel, expr));
+	emit(std::make_unique<JumpIfInstr>(false, this->endLabel, expr));
 	genLoopStatements(this->body, this);
 	emit(std::make_unique<JumpInstr>(this->startLabel));
 	emit(this->endLabel->def());
@@ -360,7 +315,7 @@ void DoWhileNode::gen(ScopeNode* parent)
 	emit(this->startLabel->def());
 	genLoopStatements(this->body, this);
 	Operand expr = genExpression(this->expression.get(), this);
-	emit(std::make_unique<JumpIfTrueInstr>(this->startLabel, expr));
+	emit(std::make_unique<JumpIfInstr>(true, this->startLabel, expr));
 	emit(this->endLabel->def());
 }
 
@@ -386,7 +341,7 @@ void ForNode::gen(ScopeNode* parent)
 
 	if (!dynamic_cast<VoidNode*>(this->expression.get())) {
 		Operand expr = genExpression(this->expression.get(), this);
-		emit(std::make_unique<JumpIfFalseInstr>(this->endLabel, expr));
+		emit(std::make_unique<JumpIfInstr>(false, this->endLabel, expr));
 	}
 	genLoopStatements(this->body, this);
 	emit(this->epilogueLabel->def());
@@ -419,19 +374,14 @@ void ContinueNode::gen(ScopeNode* parent)
 Operand genCall(CallNode* node, ScopeNode* parent)
 {
 	Operand retReg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
-	std::vector<Operand> argRegs;
+	auto instr = std::make_unique<CallInstr>(node->name, true, retReg);
 
 	for (size_t i = 0; i < node->args.size(); ++i)
 	{
-		argRegs.push_back(genExpression(node->args[i].get(), parent));
+		instr->args.push_back(genExpression(node->args[i].get(), parent));
 	}
-	for (size_t i = 0; i < argRegs.size(); ++i)
-	{
-		emit(std::make_unique<LoadArg>(i, argRegs[i]));
-	}
-	
-	emit(std::make_unique<CallInstr>(node->name)); 
-	emit(std::make_unique<SaveRet>(retReg));
+
+	emit(std::move(instr));
 	return retReg;
 }
 
@@ -440,8 +390,7 @@ void FuncNode::gen(ScopeNode* parent)
 	(void)parent;
 	if (!this->isDef) return;
 
-	emit(std::make_unique<FuncPrologueInstr>(this->name));
-	size_t index = ir.size() - 1;
+	auto prologue = std::make_unique<FuncPrologueInstr>(this->name);
 
 	for (size_t i = 0; i < this->paramList.size(); i++)
 	{
@@ -450,15 +399,16 @@ void FuncNode::gen(ScopeNode* parent)
 										attrs.offset,
 										attrs.type->size);
 
-		emit(std::make_unique<SaveArg>(i, op));
+		prologue->args.push_back(op);
 	}
+	emit(std::move(prologue));
+	size_t index = ir.size() - 1;
+
 	genBody(this->body, this);
 
-	this->frameSize = abs(this->frameSize);
 	int pad = this->frameSize % 16;
 	this->frameSize = this->frameSize + 16 - (pad ? pad : 16);
 	static_cast<FuncPrologueInstr*>(ir.at(index).get())->frameSize = this->frameSize;
-	emit(std::make_unique<FuncEpilogueInstr>(this->name));
 }
 
 void UnaryOpNode::gen(ScopeNode* parent)

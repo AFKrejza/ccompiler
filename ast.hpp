@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "error.hpp"
+#include "lexer.hpp"
 #include "operators.hpp"
 #include "taco.hpp"
 #include "type.hpp"
@@ -20,10 +21,8 @@ class Parameter {
 
 		Parameter(int line, std::string name, std::unique_ptr<Type> type)
 		:	line(line),
-			name(name) {
-				fmt::print("param created\n");
-				this->type = std::move(type);
-			}
+			name(name),
+			type(std::move(type)) {}
 		
 		~Parameter() = default;
 
@@ -205,7 +204,7 @@ class FuncNode : public ScopeNode {
 		std::vector<Parameter> paramList;
 		bool isDef;
 		bool isExtern;
-		std::unique_ptr<Type> type = nullptr;
+		std::shared_ptr<FuncType> type;
 
 		FuncNode(int line,
 				 ScopeNode* parent,
@@ -213,16 +212,15 @@ class FuncNode : public ScopeNode {
 				 std::unique_ptr<Type> returnType,
 				 std::vector<Parameter> paramList,
 				 bool isDef,
-				 bool isExtern)
+				 bool isExtern,
+				 std::shared_ptr<FuncType> type)
 			: ScopeNode(line, parent),
 			name(name),
 			returnType(std::move(returnType)),
 			paramList(std::move(paramList)),
 			isDef(isDef),
-			isExtern(isExtern)
-			{
-				this->type = std::make_unique<FuncType>();
-			}
+			isExtern(isExtern),
+			type(type) {}
 
 		~FuncNode() = default;
 		FuncNode(FuncNode&&) = default;
@@ -271,7 +269,6 @@ inline int ScopeNode::changeFrameSize(int size)
 	return this->parent->changeFrameSize(size);
 }
 
-BinaryOp TokenTypeToBinaryOp(TokenType op);
 std::string binaryOpToStr(BinaryOp op);
 
 class BinaryOpNode : public Node {
@@ -280,9 +277,7 @@ class BinaryOpNode : public Node {
 		std::unique_ptr<Node> right;
 		BinaryOp op;
 
-		BinaryOpNode(int line, TokenType op) : Node(line) {
-			this->op = TokenTypeToBinaryOp(op);
-		}
+		BinaryOpNode(int line, TokenType op) : Node(line), op(Token::toBinaryOp(op)) {}
 
 		~BinaryOpNode() = default;
 
@@ -342,9 +337,7 @@ class ImmediateNode : public Node {
 	public:
 		int value;
 
-		ImmediateNode(int line, int value) : Node(line) {
-			this->value = value;
-		}
+		ImmediateNode(int line, int value) : Node(line), value(value) {}
 
 		ImmediateNode(ImmediateNode&&) = default;
 
@@ -372,9 +365,7 @@ class VariableNode : public Node {
 		std::string name;
 		std::unique_ptr<Type> type;
 
-		VariableNode(int line, std::string name) : Node(line) {
-			this->name = name;
-		}
+		VariableNode(int line, std::string name) : Node(line), name(name) {}
 
 		~VariableNode() = default;
 
@@ -761,12 +752,12 @@ class ContinueNode : public StatementNode {
 
 class CallNode : public StatementNode {
 	public:
-		std::string name;
+		std::string name; // of function it's calling
 		std::vector<std::unique_ptr<Node>> args;
+		bool saveReturn;
 
 		CallNode(int line, ScopeNode* parent, std::string name)
-		:	StatementNode(line, parent),
-			name(name) {}
+		:	StatementNode(line, parent), name(name) {}
 
 		~CallNode() = default;
 

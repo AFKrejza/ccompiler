@@ -24,7 +24,7 @@ enum class UnaryOp {
 	POSTDEC
 };
 
-enum TokenType {
+enum class TokenType {
 	SEMICOLON,
 	PLUS,
 	MINUS,

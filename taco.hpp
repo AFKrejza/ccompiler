@@ -51,22 +51,47 @@ struct Operand {
 	static Operand Variable(std::string name, int offset, int size) {
 		return { OperandKind::Variable, 0, offset, name, size };
 	}
+
+	static std::string toStr(Operand operand)
+	{
+		switch (operand.kind)
+		{
+			case OperandKind::Immediate:
+				return fmt::format("Immediate({})", operand.val);
+			case OperandKind::Temp:
+				return fmt::format("Temp({}, {})", operand.val, operand.offset);
+			case OperandKind::Variable:
+				return fmt::format("Variable({}, {})", operand.name, operand.offset);
+			default:
+				fmt::print("\nOperand: {}\n", operand.name,
+											  operand.offset,
+											  operand.size,
+											  operand.val);
+				throw_error(1, "Operand has invalid kind. Hello??");
+				exit(1);
+		}
+	}
+
+	static std::string code(const Operand& operand);
 };
 
 std::string unaryOpToStr(UnaryOp op);
 std::string binaryOpToStr(BinaryOp op);
-std::string operandToStr(Operand operand);
-
-// TODO: need a derived class for lvalues ?
 
 class BinaryInstr : public Instruction {
 	public:
-		Operand dest; // needs to be an lvalue
+		Operand dest;
 		BinaryOp op;
 		Operand left;
 		Operand right;
 
-		BinaryInstr(Operand dest, BinaryOp op, Operand left, Operand right) {
+		BinaryInstr(Operand dest, BinaryOp op, Operand left, Operand right)
+		{
+			if (dest.kind != OperandKind::Temp && dest.kind != OperandKind::Variable) {
+				throw_error(1, fmt::format(
+					"Destination Operand {} must be a Temp or a Variable, got {} instead",
+					dest.name, Operand::toStr(dest)));
+			}
 			this->dest = dest;
 			this->op = op;
 			this->left = left;
@@ -77,10 +102,10 @@ class BinaryInstr : public Instruction {
 		
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("BinaryInstr {} = {} {} {}\n", operandToStr(dest),
-													  operandToStr(left),
+			fmt::print("BinaryInstr {} = {} {} {}\n", Operand::toStr(dest),
+													  Operand::toStr(left),
 													  binaryOpToStr(op),
-													  operandToStr(right));
+													  Operand::toStr(right));
 		}
 		
 		std::string typeName() const override {
@@ -96,36 +121,29 @@ class UnaryInstr : public Instruction {
 		Operand src;
 		UnaryOp op;
 
-		UnaryInstr(Operand dest, Operand src, UnaryOp op) {
-			this->dest = dest;
-			this->src = src;
-			this->op = op;
-		}
+		UnaryInstr(Operand dest, Operand src, UnaryOp op) : dest(dest), src(src), op(op) {}
 
 		~UnaryInstr() = default;
 
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("UnaryInstr {} {}\n", unaryOpToStr(op), operandToStr(dest));
+			fmt::print("UnaryInstr {} {}\n", unaryOpToStr(op), Operand::toStr(dest));
 		}
 
 		void code() override;
 };
 
-
 class ReturnInstr : public Instruction {
 	public:
 		Operand operand;
 
-		ReturnInstr(Operand operand) {
-			this->operand = operand;
-		}
+		ReturnInstr(Operand operand) : operand(operand) {}
 
 		~ReturnInstr() = default;
 
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("Return {}\n", operandToStr(operand));
+			fmt::print("Return {}\n", Operand::toStr(operand));
 		}
 
 		std::string typeName() const override {
@@ -140,16 +158,13 @@ class AssignmentInstr : public Instruction {
 		Operand dest;
 		Operand src;
 
-		AssignmentInstr(Operand dest, Operand src) {
-			this->dest = dest;
-			this->src = src;
-		}
+		AssignmentInstr(Operand dest, Operand src) : dest(dest), src(src) {}
 
 		~AssignmentInstr() = default;
 
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("Assign {} = {}\n", operandToStr(dest), operandToStr(src));
+			fmt::print("Assign {} = {}\n", Operand::toStr(dest), Operand::toStr(src));
 		}
 
 		std::string typeName() const override {
@@ -162,9 +177,7 @@ class Label : public Instruction {
 	public:
 		std::string name;
 
-		Label(std::string name) {
-			this->name = name;
-		}
+		Label(std::string name) : name(name) {}
 
 		~Label() = default;
 
@@ -204,46 +217,25 @@ class JumpInstr : public Instruction {
 		void code() override;
 };
 
-// TODO: combine into one JumpIfInstr
-class JumpIfTrueInstr : public JumpInstr {
+class JumpIfInstr : public JumpInstr {
 	public:
 		Operand operand;
+		bool condition;
 
-		JumpIfTrueInstr(std::shared_ptr<Label> label, Operand operand)
+		JumpIfInstr(bool condition, std::shared_ptr<Label> label, Operand operand)
 		:	JumpInstr(label),
-			operand(operand) {}
+			operand(operand),
+			condition(condition) {}
 
-		~JumpIfTrueInstr() = default;
+		~JumpIfInstr() = default;
 
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("JumpIfTrue {} {}\n", operandToStr(operand), label->name);
+			fmt::print("JumpIfTrue {} {}\n", Operand::toStr(operand), label->name);
 		}
 
 		std::string typeName() const override {
-			return "JumpIfTrueInstr";
-		}
-
-		void code() override;
-};
-
-class JumpIfFalseInstr : public JumpInstr {
-	public:
-		Operand operand;
-
-		JumpIfFalseInstr(std::shared_ptr<Label> label, Operand operand)
-		:	JumpInstr(label),
-			operand(operand) {}
-
-		~JumpIfFalseInstr() = default;
-
-		void print(int indent) const override {
-			printIndentLines(indent);
-			fmt::print("JumpIfFalse {} {}\n", operandToStr(operand), label->name);
-		}
-
-		std::string typeName() const override {
-			return "JumpIfFalseInstr";
+			return "JumpIfInstr";
 		}
 
 		void code() override;
@@ -255,10 +247,9 @@ class FuncPrologueInstr : public Instruction {
 	public:
 		std::unique_ptr<Label> name;
 		int frameSize;
+		std::vector<Operand> args;
 
-		FuncPrologueInstr(std::string name) {
-			this->name = std::make_unique<Label>(name);
-		}
+		FuncPrologueInstr(std::string name) : name(std::make_unique<Label>(name)) {}
 
 		~FuncPrologueInstr() = default;
 
@@ -273,102 +264,26 @@ class FuncPrologueInstr : public Instruction {
 		void code() override;
 };
 
-class FuncEpilogueInstr : public Instruction {
-	public:
-		std::string name;
-
-		FuncEpilogueInstr(std::string name) : name(name) {}
-
-		~FuncEpilogueInstr() = default;
-
-		void print(int indent) const override {
-			printIndentLines(indent);
-			fmt::print("FuncEpilogueInstr {}\n", name);
-		}
-
-		std::string typeName() const override {
-			return "FuncEpilogueInstr";
-		}
-		void code() override;
-};
-
 class CallInstr : public Instruction {
 	public:
 		std::string name;
+		bool saveReturn;
+		Operand dest; // must be Temp or Variable
+		std::vector<Operand> args;
 
-		CallInstr(std::string name) : name(name) {}
+		CallInstr(std::string name, bool saveRet, Operand dest) :
+			name(name), saveReturn(saveRet), dest(dest) {}
 
 		~CallInstr() = default;
 
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("CallInstr {}\n", name);
+			fmt::print("CallInstr {}, argc({}), saveret: {}\n",
+				name, args.size(), Operand::toStr(dest));
 		}
 
 		std::string typeName() const override {
 			return "CallInstr";
 		}
-		void code() override;
-};
-
-class LoadArg : public Instruction {
-	public:
-		size_t index;
-		Operand src;
-
-		LoadArg(size_t index, Operand src) : index(index), src(src) {}
-
-		~LoadArg() = default;
-
-		void print(int indent) const override {
-			printIndentLines(indent);
-			fmt::print("LoadArg {} = {}\n", index, operandToStr(src));
-		}
-
-		std::string typeName() const override {
-			return "LoadArg";
-		}
-
-		void code() override;
-};
-
-class SaveRet : public Instruction {
-	public:
-		Operand dest;
-		
-		SaveRet(Operand dest) : dest(dest) {}
-
-		~SaveRet() = default;
-
-		void print(int indent) const override {
-			printIndentLines(indent);
-			fmt::print("Save eax to {}\n", dest.offset);
-		}
-
-		std::string typeName() const override {
-			return "SaveRet";
-		}
-		void code() override;
-};
-
-// basically identical to LoadArg
-class SaveArg : public Instruction {
-	public:
-		size_t index;
-		Operand dest;
-
-		SaveArg(size_t index, Operand dest) : index(index), dest(dest) {}
-
-		~SaveArg() = default;
-
-		void print(int indent) const override {
-			printIndentLines(indent);
-			fmt::print("SaveArg {} = arg {}\n", operandToStr(dest), index);
-		}
-
-		std::string typeName() const override {
-			return "SaveArg";
-		}
-
 		void code() override;
 };

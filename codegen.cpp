@@ -21,7 +21,6 @@ static void emit(std::string instr);
 static void emitni(std::string instr); // no indent
 static void emitProgramEnd();
 static void emitProgramStart();
-static std::string operandText(const Operand& operand);
 
 std::ofstream output;
 
@@ -108,12 +107,14 @@ void ReturnInstr::code()
 		throw_error(1, "emitReturn: missing rule");
 	}
 
+	// optimization: remove, but only possible if FuncPrologueInstr does it as well.
 	emit("mov rsp, rbp");
 	emit("pop rbp");
+
 	emit("ret");
 }
 
-static std::string operandText(const Operand& operand)
+std::string Operand::code(const Operand& operand)
 {
 	switch(operand.kind)
 	{
@@ -123,17 +124,17 @@ static std::string operandText(const Operand& operand)
 		case OperandKind::Variable:
 			return fmt::format("[rbp {}]", operand.offset);
 		default:
-			throw_error(1, fmt::format("operandText: invalid OperandKind in {}",
-						operandToStr(operand)));
+			throw_error(1, fmt::format("Operand::code: invalid OperandKind in {}",
+						Operand::toStr(operand)));
 			return NULL;
 	}
 }
 
 void BinaryInstr::code()
 {
-	std::string left = operandText(this->left);
-	std::string right = operandText(this->right);
-	std::string dest = operandText(this->dest);
+	std::string left = Operand::code(this->left);
+	std::string right = Operand::code(this->right);
+	std::string dest = Operand::code(this->dest);
 
 	switch(this->op)
 	{
@@ -220,18 +221,14 @@ void AssignmentInstr::code()
 	}
 }
 
-void JumpIfTrueInstr::code()
+void JumpIfInstr::code()
 {
-	emit(fmt::format("mov r10d, {}", operandText(this->operand)));
+	emit(fmt::format("mov r10d, {}", Operand::code(this->operand)));
 	emit(fmt::format("cmp r10d, 0"));
-	emit(fmt::format("jnz {}", this->label->name));
-}
 
-void JumpIfFalseInstr::code()
-{
-	emit(fmt::format("mov r10d, {}", operandText(this->operand)));
-	emit(fmt::format("cmp r10d, 0"));
-	emit(fmt::format("je {}", this->label->name));
+	std::string jmp = condition == true ? "jnz" : "je";
+
+	emit(fmt::format("{} {}", jmp, this->label->name));
 }
 
 void Label::code()
@@ -243,70 +240,6 @@ void Label::code()
 void JumpInstr::code()
 {
 	emit(fmt::format("jmp {}", this->label->name));
-}
-
-// The dest of a unary instruction should always be a temporary register.
-void UnaryInstr::code()
-{
-	assert(this->dest.kind != OperandKind::Immediate);
-
-	switch (this->op)
-	{
-		case UnaryOp::NEGATE:
-			emit(fmt::format("mov r10d, {}", operandText(this->src)));
-			emit("neg r10d");
-			emit(fmt::format("mov {}, r10d", operandText(this->dest)));
-			break;
-		case UnaryOp::LOGICAL_NOT:
-			emit(fmt::format("mov r10d, {}", operandText(this->src)));
-			emit("cmp r10d, 0");
-			emit("sete r10b");
-			emit("movzx r10d, r10b");
-			emit(fmt::format("mov {}, r10d", operandText(this->dest)));
-			break;
-		case UnaryOp:: PREINC:
-			emit(fmt::format("inc DWORD PTR {}", operandText(this->src)));
-			break;
-		case UnaryOp:: PREDEC:
-			emit(fmt::format("dec DWORD PTR {}", operandText(this->src)));
-			break;
-		case UnaryOp::POSTINC:
-			emit(fmt::format("mov r10d, {}", operandText(this->src)));
-			emit(fmt::format("mov {}, r10d", operandText(this->dest)));
-			emit(fmt::format("inc DWORD PTR {}", operandText(this->src)));
-			break;
-		case UnaryOp::POSTDEC:
-			emit(fmt::format("mov r10d, {}", operandText(this->src)));
-			emit(fmt::format("mov {}, r10d", operandText(this->dest)));
-			emit(fmt::format("dec DWORD PTR {}", operandText(this->src)));
-			break;
-		default:
-			throw_error(1, "emitUnaryInstr: invalid Unary Instruction");
-	}
-	
-}
-
-void FuncPrologueInstr::code()
-{
-	emitni(this->name->def()->name);
-	emit("push rbp");
-	emit("mov rbp, rsp");
-	emit(fmt::format("sub rsp, {}", this->frameSize));
-}
-
-void FuncEpilogueInstr::code()
-{
-	emit("");
-}
-
-void CallInstr::code()
-{
-	emit(fmt::format("call {}", this->name));
-}
-
-void SaveRet::code()
-{
-	emit(fmt::format("mov {}, eax", operandText(this->dest)));
 }
 
 static std::string getArgRegister(size_t index, int size)
@@ -346,14 +279,75 @@ static std::string getArgRegister(size_t index, int size)
 	return reg;
 }
 
-void LoadArg::code()
+// The dest of a unary instruction must be a Temp or Variable
+void UnaryInstr::code()
 {
-	emit(fmt::format("mov {}, {}", getArgRegister(this->index, this->src.size),
-								   operandText(this->src)));
+	assert(this->dest.kind != OperandKind::Immediate);
+
+	switch (this->op)
+	{
+		case UnaryOp::NEGATE:
+			emit(fmt::format("mov r10d, {}", Operand::code(this->src)));
+			emit("neg r10d");
+			emit(fmt::format("mov {}, r10d", Operand::code(this->dest)));
+			break;
+		case UnaryOp::LOGICAL_NOT:
+			emit(fmt::format("mov r10d, {}", Operand::code(this->src)));
+			emit("cmp r10d, 0");
+			emit("sete r10b");
+			emit("movzx r10d, r10b");
+			emit(fmt::format("mov {}, r10d", Operand::code(this->dest)));
+			break;
+		case UnaryOp:: PREINC:
+			emit(fmt::format("inc DWORD PTR {}", Operand::code(this->src)));
+			break;
+		case UnaryOp:: PREDEC:
+			emit(fmt::format("dec DWORD PTR {}", Operand::code(this->src)));
+			break;
+		case UnaryOp::POSTINC:
+			emit(fmt::format("mov r10d, {}", Operand::code(this->src)));
+			emit(fmt::format("mov {}, r10d", Operand::code(this->dest)));
+			emit(fmt::format("inc DWORD PTR {}", Operand::code(this->src)));
+			break;
+		case UnaryOp::POSTDEC:
+			emit(fmt::format("mov r10d, {}", Operand::code(this->src)));
+			emit(fmt::format("mov {}, r10d", Operand::code(this->dest)));
+			emit(fmt::format("dec DWORD PTR {}", Operand::code(this->src)));
+			break;
+		default:
+			throw_error(1, "emitUnaryInstr: invalid Unary Instruction");
+	}
+	
 }
 
-void SaveArg::code()
+void FuncPrologueInstr::code()
 {
-	emit(fmt::format("mov {}, {}", operandText(this->dest),
-								   getArgRegister(this->index, this->dest.size)));
+	emitni(this->name->def()->name);
+
+	// optimization: could remove stack frame creation if frameSize == 0. ReturnInstr sync
+	emit("push rbp");
+	emit("mov rbp, rsp");
+	emit(fmt::format("sub rsp, {}\n", this->frameSize));
+
+	size_t len = this->args.size();
+	for (size_t i{}; i < len; ++i)
+	{
+		emit(fmt::format("mov {}, {}", Operand::code(this->args[i]),
+									   getArgRegister(i, this->args[i].size)));
+	}
+}
+
+void CallInstr::code()
+{
+	for (size_t i{}; i < this->args.size(); ++i)
+	{
+		emit(fmt::format("mov {}, {}", getArgRegister(i, this->args[i].size),
+									   Operand::code(this->args[i])));
+	}
+
+	emit(fmt::format("call {}", this->name));
+
+	if (this->saveReturn) {
+		emit(fmt::format("mov {}, eax", Operand::code(this->dest)));
+	}
 }

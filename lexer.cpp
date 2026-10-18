@@ -193,7 +193,7 @@ static void scanToken()
 				break;
 			}
 			else {
-				addToken(IDENTIFIER, current - start, lexeme);
+				addToken(TokenType::IDENTIFIER, current - start, lexeme);
 				break;
 			}
 
@@ -205,19 +205,19 @@ static void scanToken()
 static void populateKeywords(std::unordered_map<TokenType, std::string> printmap)
 {
 	const std::vector<TokenType> keywordFilter = {
-		CHAR,
-		SHORT,
-		INT,
-		LONG,
-		IF,
-		ELSE,
-		RETURN,
-		WHILE,
-		DO,
-		FOR,
-		BREAK,
-		CONTINUE,
-		EXTERN
+		TokenType::CHAR,
+		TokenType::SHORT,
+		TokenType::INT,
+		TokenType::LONG,
+		TokenType::IF,
+		TokenType::ELSE,
+		TokenType::RETURN,
+		TokenType::WHILE,
+		TokenType::DO,
+		TokenType::FOR,
+		TokenType::BREAK,
+		TokenType::CONTINUE,
+		TokenType::EXTERN
 	};
 
 	int len = keywordFilter.size();
@@ -316,7 +316,7 @@ static std::string scanLexeme()
 	return lexeme;
 }
 
-// only does positive ints
+// negative numbers are managed in the parser with UnaryOp::NEGATE
 static bool parseInteger(std::string lexeme)
 {
 	int number = 0;	
@@ -330,7 +330,7 @@ static bool parseInteger(std::string lexeme)
 		number *= 10;
 		number += ctoi(lexeme[i]);
 	}
-	addToken(INTEGER, current - len, lexeme, number);
+	addToken(TokenType::INTEGER, current - len, lexeme, number);
 	return true;
 }
 

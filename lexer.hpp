@@ -34,7 +34,7 @@ struct LiteralPrintVisitor {
 
 class Token {
 	public:
-		TokenType tokenType;
+		TokenType type;
 		std::string lexeme; // exact source text
 		Literal literal;
 		int line;
@@ -46,28 +46,19 @@ class Token {
 			  std::string lexeme,
 			  Literal literal,
 			  int line,
-			  int column)
-		{
-			this->tokenType = tokenType;
-			this->lexeme = lexeme;
-			this->literal = literal;
-			this->line = line;
-			this->column = column;
-			this->length = length;
-		}
+			  int column) : type(tokenType),
+			  				lexeme(lexeme),
+							literal(literal),
+							line(line),
+			  				column(column),
+							length(length) {}
 
 		// only for 0-initialization
-		Token() {
-			this->tokenType = END_OF_FILE;
-			this->lexeme = "";
-			this->line = 0;
-			this->column = 0;
-			this->length = 0;
-		}
+		Token() : type(TokenType::END_OF_FILE), lexeme(""), line(0), column(0), length(0) {}
 
 		void print()
 		{
-			fmt::print("   TokenType: {} \n", tokenTypeToStr(tokenType));
+			fmt::print("   TokenType: {} \n", Token::toStr(this->type));
 			fmt::print(" Lexeme: {}\n", lexeme);
 			fmt::print("Literal: {}\n", std::visit(LiteralPrintVisitor{}, literal));
 			fmt::print("   Line: {}\n", line);
@@ -78,7 +69,7 @@ class Token {
 		// contains all symbols and keywords
 		static const std::unordered_map<TokenType, std::string> printmap;
 
-		static std::string tokenTypeToStr(TokenType type)
+		static std::string toStr(TokenType type)
 		{
 			auto it = printmap.find(type);
 			if (it != printmap.end()) {
@@ -86,5 +77,37 @@ class Token {
 			}
 			throw_error(3, "Couldn't find token to be printed. ???");
 			return "";
+		}
+
+		static BinaryOp toBinaryOp(TokenType op) {
+			switch (op)
+			{
+				case TokenType::PLUS:
+					return BinaryOp::ADD;
+				case TokenType::MINUS:
+					return BinaryOp::SUB;
+				case TokenType::ASTERISK:
+					return BinaryOp::MUL;
+				case TokenType::LOGICAL_AND:
+					return BinaryOp::LOGICAL_AND;
+				case TokenType::LOGICAL_OR:
+					return BinaryOp::LOGICAL_OR;
+				case TokenType::EQUAL_TO:
+					return BinaryOp::EQUAL_TO;
+				case TokenType::NOT_EQUAL:
+					return BinaryOp::NOT_EQUAL;
+				case TokenType::LESS_THAN:
+					return BinaryOp::LESS_THAN;
+				case TokenType::LESSER_OR_EQUAL:
+					return BinaryOp::LESSER_OR_EQUAL;
+				case TokenType::GREATER_THAN:
+					return BinaryOp::GREATER_THAN;
+				case TokenType::GREATER_OR_EQUAL:
+					return BinaryOp::GREATER_OR_EQUAL;
+				default:
+					throw_error(1, fmt::format(
+						"Invalid TokenType to BinaryOp conversion: type {}", Token::toStr(op)));
+					exit(1);
+			}
 		}
 };

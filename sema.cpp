@@ -25,8 +25,9 @@ GodNode* program;
 
 // just because I want evalType to always return a usable type.
 // implementing this widely could prevent a ton of allocations.
-static std::shared_ptr<ImmediateType> g_immediate_type = std::make_unique<ImmediateType>();
-static std::shared_ptr<FuncType> g_func_type = std::make_unique<FuncType>();
+std::shared_ptr<ImmediateType> g_immediate_type = std::make_unique<ImmediateType>();
+std::shared_ptr<FuncType> g_func_type = std::make_unique<FuncType>();
+std::shared_ptr<VoidType> g_void_type = std::make_unique<VoidType>();
 
 void sema(GodNode* prog)
 {
@@ -67,6 +68,10 @@ static void evalStatements(StatementNode* block, ScopeNode* parent)
 // Types are linked lists of size 1 or greater.
 bool typesEqual(const Type *first, const Type *second)
 {
+	if (first == nullptr || second == nullptr) {
+		throw_error(1, "typesEqual: cannot evaluate nullptr");
+	}
+
 	// TODO: look into how C manages differently sized integers.
 
 	// TODO: perhaps add a equalTo map or switch to each Type?
@@ -145,8 +150,12 @@ static Type* evalType(Node *node, ScopeNode* parent)
 void DeclarationNode::eval(ScopeNode* parent)
 {
 	if (this->expression != nullptr) {
-		if (!typesEqual(this->type.get(), evalType(this->expression.get(), parent))) {
-			throw_error_line(1, this->line, "evalDeclaration: Unequal types");
+		Type* exprType = evalType(this->expression.get(), parent);
+
+		if (!typesEqual(this->type.get(), exprType)) {
+			throw_error_line(1, this->line,
+				fmt::format("evalDeclaration: Unequal types: {}, {}",
+					this->type.get()->typeName(), exprType->typeName()));
 		}
 	}
 
@@ -406,6 +415,8 @@ void CallNode::eval(ScopeNode* parent)
 
 		evalExpression(this->args[i].get(), parent);
 	}
+
+	this->saveReturn = !typesEqual(func->returnType.get(), g_void_type.get()) ? true : false;
 }
 
 void ImmediateNode::eval(ScopeNode* parent)
