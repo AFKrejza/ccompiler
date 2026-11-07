@@ -4,6 +4,7 @@
 */
 
 #include <cassert>
+#include <optional>
 #include <vector>
 
 #include "ast.hpp"
@@ -11,7 +12,13 @@
 #include "utils.hpp"
 
 static void emit(std::unique_ptr<Instruction> instr);
-static Operand genExpression(Node *node, ScopeNode* parent);
+static std::optional<Operand> genExpression(Node *node,
+											ScopeNode* parent,
+											std::optional<Operand> dest);
+static void genCond(Node* expr,
+					ScopeNode* parent,
+					std::shared_ptr<Label> ifTrue,
+					std::shared_ptr<Label> ifFalse);
 static void genOr(BinaryOpNode* node, Operand dest, ScopeNode* parent);
 static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent);
 static void genBody(std::vector<std::unique_ptr<Node>>& body, ScopeNode* parent);
@@ -60,29 +67,41 @@ static void emit(std::unique_ptr<Instruction> instr)
 	ir.emplace_back(std::move(instr));
 }
 
-static Operand genExpression(Node *node, ScopeNode* parent)
+// optimization: prevents needless temp variables if a dest Operand is defined
+static std::optional<Operand> genExpression(Node *node,
+							 ScopeNode* parent,
+							 std::optional<Operand> dest = std::nullopt)
 {
 	Operand vreg;
+	if (dest.has_value()) vreg = dest.value();
 
 	if (auto* n = dynamic_cast<ImmediateNode*>(node)) {
 		vreg = Operand::Immediate(n->value);
 	}
-	else if (auto* binOp = dynamic_cast<BinaryOpNode*>(node)) {
+	else if (auto* binOp = dynamic_cast<BinaryOpNode*>(node))
+	{
 		if (binOp->op == BinaryOp::LOGICAL_AND ||
-			binOp->op == BinaryOp::LOGICAL_OR) {
-			return Operand::Temp(newVreg(), parent->changeFrameSize(4));
+			binOp->op == BinaryOp::LOGICAL_OR)
+		{
+			if (!vreg.exists) vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
+			if (binOp->op == BinaryOp::LOGICAL_OR)
+				genOr(binOp, vreg, parent);
+
+			if (binOp->op == BinaryOp::LOGICAL_AND)
+				genAnd(binOp, vreg, parent);
 		}
-		
-		Operand left = genExpression(binOp->left.get(), parent);
-		Operand right = genExpression(binOp->right.get(), parent);
-		vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
-
-		auto binInstr = std::make_unique<BinaryInstr>(vreg,
-										 binOp->op,
-										 left,
-										 right);
-
-		emit(std::move(binInstr));
+		else {
+			Operand left = genExpression(binOp->left.get(), parent).value();
+			Operand right = genExpression(binOp->right.get(), parent).value();
+	
+			if (!vreg.exists) vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
+			auto binInstr = std::make_unique<BinaryInstr>(vreg,
+											 binOp->op,
+											 left,
+											 right);
+	
+			emit(std::move(binInstr));
+		}
 		return vreg;
 	}
 	else if (auto* unOp = dynamic_cast<UnaryOpNode*>(node)) {
@@ -102,11 +121,25 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 				break;
 			case UnaryOp::NEGATE:
 			case UnaryOp::LOGICAL_NOT:
-				vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
-				src = genExpression(unOp->expression.get(), parent);
-				unInstr = std::make_unique<UnaryInstr>(vreg, src, unOp->op);
-				emit(std::move(unInstr));
+				src = genExpression(unOp->expression.get(), parent).value();
+				// optimization: inserts negativ immediates directly.
+				if (src.kind == OperandKind::Immediate)
+				{
+					if (unOp->op == UnaryOp::NEGATE)
+						src.val = -src.val;
+					else
+						src.val = src.val ? 0 : 1;
+					
+					vreg = src;
+				} else {
+					vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
+					unInstr = std::make_unique<UnaryInstr>(vreg, src, unOp->op);
+					emit(std::move(unInstr));
+				}
 				break;
+			default:
+				throw_error_line(1, unOp->line,
+					fmt::format("genExpression: no rule for unary {}", unOp->typeName()));
 		}
 		return vreg;
 	}
@@ -132,15 +165,7 @@ static Operand genExpression(Node *node, ScopeNode* parent)
 
 void ReturnNode::gen(ScopeNode* parent)
 {
-	Operand dest = genExpression(this->expression.get(), parent);
-
-	if (auto* binOp = dynamic_cast<BinaryOpNode*>(this->expression.get()))
-	{
-		if (binOp->op == BinaryOp::LOGICAL_OR)
-				genOr(binOp, dest, parent);
-		else if (binOp->op == BinaryOp::LOGICAL_AND)
-				genAnd(binOp, dest, parent);
-	}
+	Operand dest = genExpression(this->expression.get(), parent).value();
 	emit(std::make_unique<ReturnInstr>(dest));
 }
 
@@ -196,12 +221,11 @@ static Operand genAssignment(int line, std::string name, Node* expr, ScopeNode* 
 				genAnd(binOp, dest, parent);
 				break;
 			default:
-				src = genExpression(expr, parent);
-				emit(std::make_unique<AssignmentInstr>(dest, src));
+				src = genExpression(expr, parent, dest).value();
 		}
 	}
 	else {
-		src = genExpression(expr, parent);
+		src = genExpression(expr, parent).value();
 		emit(std::make_unique<AssignmentInstr>(dest, src));
 	}
 
@@ -224,7 +248,7 @@ std::unique_ptr<Label> newLocalLabel(std::string text)
 		throw_error(1, fmt::format("newLocalLabel can't receive label definitions"));
 
 	return std::make_unique<Label>(
-		std::string{".L_"}.append(text.append(std::to_string(++labelCount)))
+		std::string{".L_"}.append(text.append("_").append(std::to_string(++labelCount)))
 	);
 }
 
@@ -239,8 +263,8 @@ static void genOr(BinaryOpNode* node, Operand dest, ScopeNode* parent)
 	std::shared_ptr<Label> cont = newLocalLabel("cont");
 	std::shared_ptr<Label> ifFalse = newLocalLabel("iffalse");
 
-	Operand left = genExpression(node->left.get(), parent);
-	Operand right = genExpression(node->right.get(), parent);
+	Operand left = genExpression(node->left.get(), parent).value();
+	Operand right = genExpression(node->right.get(), parent).value();
 
 	emit(std::make_unique<JumpIfInstr>(true, ifTrue, left));
 	emit(std::make_unique<JumpIfInstr>(false, ifFalse, right));
@@ -257,8 +281,8 @@ static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent)
 	std::shared_ptr<Label> skip = newLocalLabel("skip");
 	std::shared_ptr<Label> cont = newLocalLabel("cont");
 
-	Operand left = genExpression(node->left.get(), parent);
-	Operand right = genExpression(node->right.get(), parent);
+	Operand left = genExpression(node->left.get(), parent).value();
+	Operand right = genExpression(node->right.get(), parent).value();
 
 	emit(std::make_unique<JumpIfInstr>(false, skip, left));
 	emit(std::make_unique<JumpIfInstr>(false, skip, right));
@@ -272,20 +296,85 @@ static void genAnd(BinaryOpNode* node, Operand dest, ScopeNode* parent)
 void IfNode::gen(ScopeNode* parent)
 {
 	std::shared_ptr<Label> skip;
-	Operand expr = genExpression(this->expression.get(), this);
-
+	std::shared_ptr<Label> isTrue = newLocalLabel("is_true");
+	
 	if (this->elseBranch) {
 		skip = newLocalLabel("else");
 	}
-	else
+	else {
 		skip = newLocalLabel("cont");
-
-	emit(std::make_unique<JumpIfInstr>(false, skip, expr));
+	}
+	genCond(this->expression.get(), parent, isTrue, skip);
+	emit(isTrue->def());
 	genBody(this->body, this);
 	emit(skip->def());
 
 	if (this->elseBranch)
 		genBody(this->elseBranch->body, parent);
+}
+
+// optimization: prevents unnecessary creation of temps used in conditionals.
+// e.g. if (a == b): previously it'd do the comparison, store it, load it, check if it's true,
+// and then do the jump. Now it just does the comparison and uses the result directly when possible
+static void genCond(Node* expr, 
+					ScopeNode* parent,
+					std::shared_ptr<Label> ifTrue, 
+					std::shared_ptr<Label> ifFalse)
+{
+	if (auto e = dynamic_cast<BinaryOpNode*>(expr))
+	{
+		std::shared_ptr<Label> local;
+		Operand operand;
+		Operand left;
+		Operand right;
+		switch(e->op)
+		{
+			case BinaryOp::LOGICAL_AND:
+				local = newLocalLabel("iftrue");
+				genCond(e->left.get(), parent, local, ifFalse);
+				emit(local->def());
+				break;
+			case BinaryOp::LOGICAL_OR:
+				local = newLocalLabel("nextcond");
+				genCond(e->left.get(), parent, ifTrue, local);
+				emit(local->def());
+				genCond(e->right.get(), parent, ifTrue, ifFalse);
+				break;
+			case BinaryOp::EQUAL_TO:
+			case BinaryOp::NOT_EQUAL:
+			case BinaryOp::LESS_THAN:
+			case BinaryOp::LESSER_OR_EQUAL:
+			case BinaryOp::GREATER_THAN:
+			case BinaryOp::GREATER_OR_EQUAL:
+				left = genExpression(e->left.get(), parent).value();
+				right = genExpression(e->right.get(), parent).value();
+				emit(std::make_unique<CondJump>(e->op, left, right, ifTrue, ifFalse));
+				break;
+			default:
+				operand = genExpression(expr, parent).value();
+				emit(std::make_unique<CondJump>(e->op, operand,
+					Operand::Immediate(0),
+					std::move(ifTrue),
+					std::move(ifFalse)));
+				break;
+		}
+	}
+	else if (auto u = dynamic_cast<UnaryOpNode*>(expr))
+	{
+		if (u->op == UnaryOp::LOGICAL_NOT)
+		{
+			genCond(u->expression.get(), parent, ifFalse, ifTrue);
+		}
+
+	}
+	else {
+		Operand operand = genExpression(expr, parent).value();
+		emit(std::make_unique<CondJump>(BinaryOp::NOT_EQUAL, 
+										operand, 
+										Operand::Immediate(0), 
+										ifTrue, 
+										ifFalse));
+	}
 }
 
 static void genLoopStatements(std::vector<std::unique_ptr<Node>>& block, LoopNode* parent)
@@ -301,8 +390,8 @@ void WhileNode::gen(ScopeNode* parent)
 	(void)parent;
 
 	emit(this->startLabel->def());
-	Operand expr = genExpression(this->expression.get(), this);
-	emit(std::make_unique<JumpIfInstr>(false, this->endLabel, expr));
+	genCond(this->expression.get(), this, this->bodyLabel, this->endLabel);
+	emit(this->bodyLabel->def());
 	genLoopStatements(this->body, this);
 	emit(std::make_unique<JumpInstr>(this->startLabel));
 	emit(this->endLabel->def());
@@ -314,8 +403,7 @@ void DoWhileNode::gen(ScopeNode* parent)
 
 	emit(this->startLabel->def());
 	genLoopStatements(this->body, this);
-	Operand expr = genExpression(this->expression.get(), this);
-	emit(std::make_unique<JumpIfInstr>(true, this->startLabel, expr));
+	genCond(this->expression.get(), this, this->startLabel, this->endLabel);
 	emit(this->endLabel->def());
 }
 
@@ -340,9 +428,9 @@ void ForNode::gen(ScopeNode* parent)
 	emit(this->startLabel->def());
 
 	if (!dynamic_cast<VoidNode*>(this->expression.get())) {
-		Operand expr = genExpression(this->expression.get(), this);
-		emit(std::make_unique<JumpIfInstr>(false, this->endLabel, expr));
+		genCond(this->expression.get(), this, this->bodyLabel, this->endLabel);
 	}
+	emit(bodyLabel->def());
 	genLoopStatements(this->body, this);
 	emit(this->epilogueLabel->def());
 
@@ -378,7 +466,7 @@ Operand genCall(CallNode* node, ScopeNode* parent)
 
 	for (size_t i = 0; i < node->args.size(); ++i)
 	{
-		instr->args.push_back(genExpression(node->args[i].get(), parent));
+		instr->args.push_back(genExpression(node->args[i].get(), parent).value());
 	}
 
 	emit(std::move(instr));
@@ -454,7 +542,15 @@ static Operand emitPrefix(UnaryOpNode* node, ScopeNode* parent)
 static Operand emitPostFix(UnaryOpNode* node, ScopeNode* parent)
 {
 	Operand vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
-	Operand src = genExpression(node->expression.get(), parent);
+	Operand src = genExpression(node->expression.get(), parent).value();
 	emit(std::make_unique<UnaryInstr>(vreg, src, node->op));
 	return vreg;
+}
+
+bool isbinOpRelationalOperator(BinaryOp op)
+{
+	for (auto i : binOpRelationals) {
+		if (op == i) return true;
+	}
+	return false;
 }

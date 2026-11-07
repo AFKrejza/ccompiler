@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include <fmt/core.h>
 
 #include "utils.hpp"
@@ -24,7 +26,7 @@ class Instruction {
 enum class OperandKind {
 	Temp,
 	Immediate,
-	Variable
+	Variable,
 };
 
 // Created in TACO and used in codegen
@@ -36,20 +38,21 @@ struct Operand {
 	int offset = 0;
 	std::string name{};
 	int size;
+	bool exists = false;
 
 	// vReg number and stack offset
 	static Operand Temp(int vReg, int offset) {
-		return { OperandKind::Temp, vReg, offset, "", 4 };
+		return { OperandKind::Temp, vReg, offset, "", 4, true };
 	}
 	// just the immediate value.
 	// TODO:I should add a check to ensure that it's within 64 bit
 	// (change that to a long everywhere... or an unsigned long int??)
 	static Operand Immediate(int value) {
-		return { OperandKind::Immediate, value, 0, "", 4 };
+		return { OperandKind::Immediate, value, 0, "", 4, true };
 	}
 
 	static Operand Variable(std::string name, int offset, int size) {
-		return { OperandKind::Variable, 0, offset, name, size };
+		return { OperandKind::Variable, 0, offset, name, size, true };
 	}
 
 	static std::string toStr(Operand operand)
@@ -92,6 +95,11 @@ class BinaryInstr : public Instruction {
 					"Destination Operand {} must be a Temp or a Variable, got {} instead",
 					dest.name, Operand::toStr(dest)));
 			}
+
+			if (op == BinaryOp::LOGICAL_AND || op == BinaryOp::LOGICAL_OR) {
+				throw_error(1, fmt::format("BinaryInstr cannot contain Logical AND/OR"));
+			}
+
 			this->dest = dest;
 			this->op = op;
 			this->left = left;
@@ -231,7 +239,8 @@ class JumpIfInstr : public JumpInstr {
 
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("JumpIfTrue {} {}\n", Operand::toStr(operand), label->name);
+			fmt::print("JumpIf{} {} {}\n", condition ? "True" : "False",
+										   Operand::toStr(operand), label->name);
 		}
 
 		std::string typeName() const override {
@@ -239,6 +248,61 @@ class JumpIfInstr : public JumpInstr {
 		}
 
 		void code() override;
+};
+
+class CondJump : public Instruction {
+	public:
+		Operand left;
+		Operand right;
+		std::shared_ptr<Label> ifTrue;
+		std::shared_ptr<Label> ifFalse;
+		BinaryOp op; // can only be a relational operator
+
+		CondJump(BinaryOp op,
+				 Operand left,
+				 Operand right, 
+				 std::optional<std::shared_ptr<Label>> ifTrue,
+				 std::optional<std::shared_ptr<Label>> ifFalse) 
+			: left(left), right(right)
+		{
+			if (!isbinOpRelationalOperator(op)) {
+				std::string str {};
+				for (auto i : binOpRelationals) {
+					str.append(fmt::format("{}, ", binaryOpToStr(i)));
+				}
+				str.erase(str.back()).erase(str.back());
+				throw_error(1, fmt::format("CondJump: Expected a relational operator, "
+					"got '{}'. Valid boolean operators: {}", binaryOpToStr(op), str));
+			}
+			
+			this->op = op;
+			this->left = left;
+			this->right = right;
+			// to prevent needless jump if it should execute the next instruction anyway
+			if (ifTrue.has_value()) this->ifTrue = std::move(ifTrue.value());
+				else this->ifTrue = nullptr;
+			if (ifFalse.has_value()) this->ifFalse = std::move(ifFalse.value());
+				else this->ifFalse = nullptr;
+		}
+
+		~CondJump() = default;
+
+		void print(int indent) const override {
+			printIndentLines(indent);
+			fmt::print("CondJump {}, {}, {}, T: {}, F: {}\n", binaryOpToStr(op),
+															Operand::toStr(left),
+															Operand::toStr(right),
+															(ifTrue ? ifTrue->name : ""),
+															ifFalse->name);
+		}
+
+		std::string typeName() const override {
+			return "CondJump";
+		}
+
+		void code() override;
+
+	private:
 };
 
 std::unique_ptr<Label> newLocalLabel(std::string text);

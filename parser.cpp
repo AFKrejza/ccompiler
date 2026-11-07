@@ -436,6 +436,9 @@ static std::vector<std::unique_ptr<Node>> parseStatements(bool isCompound, Scope
 			case TokenType::POSTDEC:
 				parseExpression(parent);
 				break;
+			case TokenType::SEMICOLON:
+				advance();
+				break;
 			default:
 				if (token().type == TokenType::INT &&
 					peek(1).type == TokenType::IDENTIFIER)

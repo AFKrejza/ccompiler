@@ -28,7 +28,7 @@ class TestConditionals:
 		(textwrap.dedent("""
 		int main()
 		{
-			if (1 || 0)
+			if (0 || 1)
 				return 1;
 		
 			return 0;
@@ -168,6 +168,32 @@ class TestConditionals:
 			return a;
 		}
 		"""), 6),
+		(textwrap.dedent("""
+		int main() {
+			if (0 == 1);
+			return 0;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main() {
+			if (0 == 1) {
+			}
+			return 0;
+		}
+		"""), 0),
+		(textwrap.dedent("""
+		int main()
+		{
+			int a = 0;
+			int b = 1;
+			int c = 1;
+			int d = 0;
+
+			if (a == b || b == c && c > d) return 1;
+
+			return 0;
+		}
+		"""), 1)
 	])
 	def test_all(self, compile_and_run, input, expected):
 		assert compile_and_run(input) == expected

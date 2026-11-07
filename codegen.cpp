@@ -159,6 +159,7 @@ void BinaryInstr::code()
 			break;
 		case BinaryOp::LOGICAL_AND:
 		case BinaryOp::LOGICAL_OR:
+			throw_error(1, "Logical AND/OR don't exist at the assembly level");
 			break;
 		case BinaryOp::DIV:
 		default:
@@ -189,13 +190,16 @@ static std::string binaryOpToAsm(BinaryOp op)
 			return "setne";
 		case BinaryOp::EQUAL_TO:
 			return "sete";
-		case BinaryOp::DIV:
 		case BinaryOp::LOGICAL_AND:
 		case BinaryOp::LOGICAL_OR:
-		default:
-			throw_error(1, "Error in binaryOpToAsm: Missing op translation");
-			exit(1);
+			throw_error(1, "Logical AND/OR don't exist at the assembly level");
+			break;
+		case BinaryOp::DIV:
+			throw_error(1, "Division isn't supported");
+			break;			
 	}
+	throw_error(1, "Error in binaryOpToAsm: Missing op translation");
+	exit(1);
 }
 
 void AssignmentInstr::code()
@@ -273,7 +277,7 @@ static std::string getArgRegister(size_t index, int size)
 			}
 			break;
 		default:
-			throw_error(1, "Invalid argument size");
+			throw_error(1, fmt::format("getArgRegister: no rule for arg of size {}", size));
 	}
 	
 	return reg;
@@ -350,4 +354,46 @@ void CallInstr::code()
 	if (this->saveReturn) {
 		emit(fmt::format("mov {}, eax", Operand::code(this->dest)));
 	}
+}
+
+std::string binaryOpRelationalToAsm(BinaryOp op, bool cond)
+{
+	switch (op)
+	{
+		case BinaryOp::EQUAL_TO:
+			return cond ? "je" : "jne";
+		case BinaryOp::NOT_EQUAL:
+			return cond ? "jne" : "je" ;
+		case BinaryOp::LESS_THAN:
+			return cond ? "jl" : "jge" ;
+		case BinaryOp::LESSER_OR_EQUAL:
+			return cond ? "jle" : "jg" ;
+		case BinaryOp::GREATER_THAN:
+			return cond ? "jg" : "jle" ;
+		case BinaryOp::GREATER_OR_EQUAL:
+			return cond ? "jge" : "jl" ;
+		case BinaryOp::LOGICAL_AND:
+		case BinaryOp::LOGICAL_OR:
+		case BinaryOp::ADD:
+		case BinaryOp::SUB:
+		case BinaryOp::MUL:
+		case BinaryOp::DIV:
+			throw_error(1, fmt::format("'{}' is not a relational operator.", binaryOpToStr(op)));
+			break;
+	}
+	throw_error(1, fmt::format("'{}' is not handled correctly", binaryOpToStr(op)));
+	exit(1);
+}
+
+void CondJump::code()
+{
+	// must contain a relational operator
+
+	emit(fmt::format("mov r10d, {}", Operand::code(this->left)));
+	emit(fmt::format("cmp r10d, {}", Operand::code(this->right)));
+
+	emit(fmt::format("{} {}", binaryOpRelationalToAsm(this->op, true), this->ifTrue->name));
+	emit(fmt::format("{} {}", binaryOpRelationalToAsm(this->op, false), this->ifFalse->name));
+	
+	return;
 }

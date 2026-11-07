@@ -15,6 +15,17 @@ enum class BinaryOp {
 	GREATER_OR_EQUAL
 };
 
+const std::vector<BinaryOp> binOpRelationals = {
+	BinaryOp::EQUAL_TO,
+	BinaryOp::NOT_EQUAL,
+	BinaryOp::LESS_THAN,
+	BinaryOp::LESSER_OR_EQUAL,
+	BinaryOp::GREATER_THAN,
+	BinaryOp::GREATER_OR_EQUAL
+};
+
+bool isbinOpRelationalOperator(BinaryOp op);
+
 enum class UnaryOp {
 	NEGATE,
 	LOGICAL_NOT,

@@ -79,16 +79,20 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-// TODO: add yellow and red colors for warnings and errors
 void throw_error_line(int code, int line, std::string msg)
 {
-	std::cerr << "Error on line " << line << ": " << msg << std::endl;
+	fmt::print("Error {} : line {} : {}\n", code, line, msg);
+	// segfaulting for backtraces. gotta be a better way.
+	int c = *(int*)0;
+	(void)c;
 	exit(code);
 }
 
 void throw_error(int code, std::string msg)
 {
 	fmt::print("Error {} : {}\n", code, msg);
+	int c = *(int*)0;
+	(void)c;
 	exit(code);
 }
 

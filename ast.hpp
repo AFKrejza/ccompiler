@@ -73,7 +73,6 @@ class Node {
 			(void)parent;
 			throw_error(1, "gen called on base Node");
 		}
-		
 };
 
 class VoidNode : public Node {
@@ -555,12 +554,14 @@ class LoopNode : public ScopeNode {
 		std::unique_ptr<Node> expression;
 		std::shared_ptr<Label> endLabel;
 		std::shared_ptr<Label> startLabel;
+		std::shared_ptr<Label> bodyLabel; // body start
 
 		LoopNode(int line, ScopeNode* parent, std::unique_ptr<Node> expression, std::string loop)
 		:	ScopeNode(line, parent),
 			expression(std::move(expression)) {
 				startLabel = newLocalLabel(loop);
 				endLabel = newLocalLabel(std::string{loop}.append("_end"));
+				bodyLabel = newLocalLabel("body");
 			}
 
 		void print(int indent) const override {
