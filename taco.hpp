@@ -42,17 +42,32 @@ struct Operand {
 
 	// vReg number and stack offset
 	static Operand Temp(int vReg, int offset) {
-		return { OperandKind::Temp, vReg, offset, "", 4, true };
+		return { OperandKind::Temp,
+				 vReg, 
+				 offset, 
+				 "", 
+				 4, 
+				 true };
 	}
 	// just the immediate value.
 	// TODO:I should add a check to ensure that it's within 64 bit
 	// (change that to a long everywhere... or an unsigned long int??)
 	static Operand Immediate(int value) {
-		return { OperandKind::Immediate, value, 0, "", 4, true };
+		return { OperandKind::Immediate, 
+				 value, 
+				 0, 
+				 "", 
+				 4, 
+				 true };
 	}
 
 	static Operand Variable(std::string name, int offset, int size) {
-		return { OperandKind::Variable, 0, offset, name, size, true };
+		return { OperandKind::Variable, 
+				 0, 
+				 offset, 
+				 name, 
+				 size, 
+				 true };
 	}
 
 	static std::string toStr(Operand operand)
@@ -78,17 +93,14 @@ struct Operand {
 	static std::string code(const Operand& operand);
 };
 
-std::string unaryOpToStr(UnaryOp op);
-std::string binaryOpToStr(BinaryOp op);
-
 class BinaryInstr : public Instruction {
 	public:
 		Operand dest;
-		BinaryOp op;
+		BinOp::en op;
 		Operand left;
 		Operand right;
 
-		BinaryInstr(Operand dest, BinaryOp op, Operand left, Operand right)
+		BinaryInstr(Operand dest, BinOp::en op, Operand left, Operand right)
 		{
 			if (dest.kind != OperandKind::Temp && dest.kind != OperandKind::Variable) {
 				throw_error(1, fmt::format(
@@ -96,7 +108,7 @@ class BinaryInstr : public Instruction {
 					dest.name, Operand::toStr(dest)));
 			}
 
-			if (op == BinaryOp::LOGICAL_AND || op == BinaryOp::LOGICAL_OR) {
+			if (op == BinOp::en::LOGICAL_AND || op == BinOp::en::LOGICAL_OR) {
 				throw_error(1, fmt::format("BinaryInstr cannot contain Logical AND/OR"));
 			}
 
@@ -112,7 +124,7 @@ class BinaryInstr : public Instruction {
 			printIndentLines(indent);
 			fmt::print("BinaryInstr {} = {} {} {}\n", Operand::toStr(dest),
 													  Operand::toStr(left),
-													  binaryOpToStr(op),
+													  BinOp::toStr(op),
 													  Operand::toStr(right));
 		}
 		
@@ -127,15 +139,15 @@ class UnaryInstr : public Instruction {
 	public:
 		Operand dest;
 		Operand src;
-		UnaryOp op;
+		UnOp::en op;
 
-		UnaryInstr(Operand dest, Operand src, UnaryOp op) : dest(dest), src(src), op(op) {}
+		UnaryInstr(Operand dest, Operand src, UnOp::en op) : dest(dest), src(src), op(op) {}
 
 		~UnaryInstr() = default;
 
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("UnaryInstr {} {}\n", unaryOpToStr(op), Operand::toStr(dest));
+			fmt::print("UnaryInstr {} {}\n", UnOp::toStr(op), Operand::toStr(dest));
 		}
 
 		void code() override;
@@ -256,23 +268,23 @@ class CondJump : public Instruction {
 		Operand right;
 		std::shared_ptr<Label> ifTrue;
 		std::shared_ptr<Label> ifFalse;
-		BinaryOp op; // can only be a relational operator
+		BinOp::en op; // can only be a relational operator
 
-		CondJump(BinaryOp op,
+		CondJump(BinOp::en op,
 				 Operand left,
 				 Operand right, 
 				 std::optional<std::shared_ptr<Label>> ifTrue,
 				 std::optional<std::shared_ptr<Label>> ifFalse) 
 			: left(left), right(right)
 		{
-			if (!isbinOpRelationalOperator(op)) {
+			if (!BinOp::isRelational(op)) {
 				std::string str {};
-				for (auto i : binOpRelationals) {
-					str.append(fmt::format("{}, ", binaryOpToStr(i)));
+				for (auto i : BinOp::relational) {
+					str.append(fmt::format("{}, ", BinOp::toStr(i)));
 				}
 				str.erase(str.back()).erase(str.back());
 				throw_error(1, fmt::format("CondJump: Expected a relational operator, "
-					"got '{}'. Valid boolean operators: {}", binaryOpToStr(op), str));
+					"got '{}'. Valid boolean operators: {}", BinOp::toStr(op), str));
 			}
 			
 			this->op = op;
@@ -289,7 +301,7 @@ class CondJump : public Instruction {
 
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("CondJump {}, {}, {}, T: {}, F: {}\n", binaryOpToStr(op),
+			fmt::print("CondJump {}, {}, {}, T: {}, F: {}\n", BinOp::toStr(op),
 															Operand::toStr(left),
 															Operand::toStr(right),
 															(ifTrue ? ifTrue->name : ""),

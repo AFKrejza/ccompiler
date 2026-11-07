@@ -44,15 +44,15 @@ std::unique_ptr<GodNode> parser()
 {
 	std::unique_ptr<GodNode> program = std::make_unique<GodNode>();
 
-	while (token().type != TokenType::END_OF_FILE)
+	while (token().type != Token::en::END_OF_FILE)
 	{
 		std::unique_ptr<Node> node;
 
-		if (token().type == TokenType::EXTERN) advance();
+		if (token().type == Token::en::EXTERN) advance();
 
-		if (token().type == TokenType::INT &&
-			tokenList.at(current + 1).type == TokenType::IDENTIFIER &&
-			tokenList.at(current + 2).type == TokenType::OPEN_PARENTHESES)
+		if (token().type == Token::en::INT &&
+			tokenList.at(current + 1).type == Token::en::IDENTIFIER &&
+			tokenList.at(current + 2).type == Token::en::OPEN_PARENTHESES)
 		{
 			program->body.emplace_back(parseFunc(program.get()));
 		}
@@ -98,8 +98,8 @@ static std::unique_ptr<Node> parseExpression(ScopeNode* parent)
 {
 	std::unique_ptr<Node> root = nullptr;
 
-	if (token().type != TokenType::END_OF_FILE &&
-		token().type != TokenType::SEMICOLON)
+	if (token().type != Token::en::END_OF_FILE &&
+		token().type != Token::en::SEMICOLON)
 	{
 		root = parseAssignment(parent);
 	}
@@ -110,7 +110,7 @@ static std::unique_ptr<Node> parseAssignment(ScopeNode* parent)
 {
 	std::unique_ptr<Node> root = parseLogicalOr(parent);
 
-	while (token().type == TokenType::ASSIGNMENT)
+	while (token().type == Token::en::ASSIGNMENT)
 	{
 		advance();
 		auto node = std::make_unique<AssignmentNode>(root->line);
@@ -132,7 +132,7 @@ static std::unique_ptr<Node> parseLogicalOr(ScopeNode* parent)
 {
 	std::unique_ptr<Node> root = parseLogicalAnd(parent);
 
-	while (token().type == TokenType::LOGICAL_OR)
+	while (token().type == Token::en::LOGICAL_OR)
 	{
 		auto node = std::make_unique<BinaryOpNode>(token().line, token().type);
 		node->left = std::move(root);
@@ -147,7 +147,7 @@ static std::unique_ptr<Node> parseLogicalAnd(ScopeNode* parent)
 {
 	std::unique_ptr<Node> root = parseEquality(parent);
 
-	while (token().type == TokenType::LOGICAL_AND)
+	while (token().type == Token::en::LOGICAL_AND)
 	{
 		auto node = std::make_unique<BinaryOpNode>(token().line, token().type);
 		node->left = std::move(root);
@@ -162,8 +162,8 @@ static std::unique_ptr<Node> parseEquality(ScopeNode* parent)
 {
 	std::unique_ptr<Node> root = parseRelational(parent);
 
-	while (token().type == TokenType::EQUAL_TO ||
-		token().type == TokenType::NOT_EQUAL)
+	while (token().type == Token::en::EQUAL_TO ||
+		token().type == Token::en::NOT_EQUAL)
 	{
 		auto node = std::make_unique<BinaryOpNode>(token().line, token().type);
 		advance();
@@ -178,10 +178,10 @@ static std::unique_ptr<Node> parseRelational(ScopeNode* parent)
 {
 	std::unique_ptr<Node> root = parseAdditive(parent);
 
-	while (token().type == TokenType::LESS_THAN ||
-		   token().type == TokenType::LESSER_OR_EQUAL ||
-		   token().type == TokenType::GREATER_THAN ||
-		   token().type == TokenType::GREATER_OR_EQUAL)
+	while (token().type == Token::en::LESS_THAN ||
+		   token().type == Token::en::LESSER_OR_EQUAL ||
+		   token().type == Token::en::GREATER_THAN ||
+		   token().type == Token::en::GREATER_OR_EQUAL)
 	{
 		auto node = std::make_unique<BinaryOpNode>(token().line, token().type);
 		advance();
@@ -196,8 +196,8 @@ static std::unique_ptr<Node> parseAdditive(ScopeNode* parent)
 {
 	std::unique_ptr<Node> root = parseTerm(parent);
 
-	while (token().type == TokenType::PLUS ||
-		   token().type == TokenType::MINUS)
+	while (token().type == Token::en::PLUS ||
+		   token().type == Token::en::MINUS)
 	{
 		auto node = std::make_unique<BinaryOpNode>(token().line, token().type);
 		advance();
@@ -214,7 +214,7 @@ static std::unique_ptr<Node> parseTerm(ScopeNode* parent)
 
 	root = parseUnary(parent);
 
-	while (token().type == TokenType::ASTERISK)
+	while (token().type == Token::en::ASTERISK)
 	{
 		auto newRoot = std::make_unique<BinaryOpNode>(token().line, token().type);
 		advance();
@@ -233,28 +233,28 @@ static std::unique_ptr<Node> parseUnary(ScopeNode* parent)
 	std::unique_ptr<Node> root;
 	std::unique_ptr<UnaryOpNode> unop;
 
-	if (token().type != TokenType::MINUS &&
-		token().type != TokenType::LOGICAL_NOT &&
-		token().type != TokenType::INC &&
-		token().type != TokenType::DEC)
+	if (token().type != Token::en::MINUS &&
+		token().type != Token::en::LOGICAL_NOT &&
+		token().type != Token::en::INC &&
+		token().type != Token::en::DEC)
 	{
 		root = parseFactor(parent);
 	}
 	else {
-		TokenType type;
+		Token::en type;
 		switch (token().type)
 		{
-			case TokenType::MINUS:
-				type = TokenType::MINUS;
+			case Token::en::MINUS:
+				type = Token::en::MINUS;
 				break;
-			case TokenType::LOGICAL_NOT:
-				type = TokenType::LOGICAL_NOT;
+			case Token::en::LOGICAL_NOT:
+				type = Token::en::LOGICAL_NOT;
 				break;
-			case TokenType::INC:
-				type = TokenType::PREINC;
+			case Token::en::INC:
+				type = Token::en::PREINC;
 				break;
-			case TokenType::DEC:
-				type = TokenType::PREDEC;
+			case Token::en::DEC:
+				type = Token::en::PREDEC;
 				break;
 			default:
 				throw_error_line(1, token().line, "Missed a rule for a unary op");
@@ -271,42 +271,42 @@ static std::unique_ptr<Node> parseFactor(ScopeNode* parent)
 {
 	std::unique_ptr<Node> factor;
 
-	if (token().type == TokenType::INTEGER)
+	if (token().type == Token::en::INTEGER)
 	{
 		factor = std::make_unique<ImmediateNode>(token().line, std::get<int>(token().literal));
 		advance();
 		return factor;
 	}
-	else if (token().type == TokenType::IDENTIFIER)
+	else if (token().type == Token::en::IDENTIFIER)
 	{
-		if (peek().type == TokenType::OPEN_PARENTHESES) {
+		if (peek().type == Token::en::OPEN_PARENTHESES) {
 			factor = parseCall(parent);
 		}
 		else {
 			factor = std::make_unique<VariableNode>(token().line, token().lexeme);
 			advance();
-			if (token().type == TokenType::INC)
+			if (token().type == Token::en::INC)
 			{
 				factor = std::make_unique<UnaryOpNode>(token().line,
-													   TokenType::POSTINC,
+													   Token::en::POSTINC,
 													   std::move(factor));
 				advance();
 			}
-			else if (token().type == TokenType::DEC)
+			else if (token().type == Token::en::DEC)
 			{
 				factor = std::make_unique<UnaryOpNode>(token().line,
-													   TokenType::POSTDEC,
+													   Token::en::POSTDEC,
 													   std::move(factor));
 				advance();
 			}
 		}
 		return factor;
 	}
-	else if (token().type == TokenType::OPEN_PARENTHESES)
+	else if (token().type == Token::en::OPEN_PARENTHESES)
 	{
 		advance();
 		factor = parseExpression(parent);
-		assert(token().type == TokenType::CLOSED_PARENTHESES);
+		assert(token().type == Token::en::CLOSED_PARENTHESES);
 		advance();
 		return factor;
 	}
@@ -326,7 +326,7 @@ static std::unique_ptr<FuncNode> parseFunc(GodNode* parent)
 	bool isExtern = false;
 
 	if (current > 0 &&
-		peek(-1).type == TokenType::EXTERN) {
+		peek(-1).type == Token::en::EXTERN) {
 		isExtern = true;
 	}
 
@@ -335,12 +335,12 @@ static std::unique_ptr<FuncNode> parseFunc(GodNode* parent)
 	std::string lexeme = token().lexeme;
 	
 	advance();
-	assert(token().type == TokenType::OPEN_PARENTHESES);
+	assert(token().type == Token::en::OPEN_PARENTHESES);
 	std::vector<Parameter> paramList = parseParamList();
 
 	std::unique_ptr<FuncNode> func;
 
-	if (token().type == TokenType::SEMICOLON)
+	if (token().type == Token::en::SEMICOLON)
 	{
 		func = std::make_unique<FuncNode>(line, parent, lexeme, std::move(returnType),
 								  std::move(paramList), false, isExtern, g_func_type);
@@ -359,18 +359,18 @@ static std::vector<Parameter> parseParamList()
 	std::vector<Parameter> paramList;
 
 	advance();
-	if (token().type == TokenType::CLOSED_PARENTHESES) {
+	if (token().type == Token::en::CLOSED_PARENTHESES) {
 		advance();
 		return paramList;
 	}
 
-	while (token().type == TokenType::INT && peek(1).type == TokenType::IDENTIFIER)
+	while (token().type == Token::en::INT && peek(1).type == Token::en::IDENTIFIER)
 	{
 		paramList.emplace_back(token().line, token().lexeme, parseType());
 		
-		if (peek(2).type == TokenType::COMMA)
+		if (peek(2).type == Token::en::COMMA)
 			advance(3);
-		else if (peek(2).type == TokenType::CLOSED_PARENTHESES)
+		else if (peek(2).type == Token::en::CLOSED_PARENTHESES)
 			advance(2);
 		else advance(2);
 	}
@@ -383,15 +383,15 @@ static std::vector<Parameter> parseParamList()
 static std::vector<std::unique_ptr<Node>> parseStatements(bool isCompound, ScopeNode* parent)
 {
 	if (isCompound) {
-		assert(token().type == TokenType::OPEN_CURLY_BRACE);
+		assert(token().type == Token::en::OPEN_CURLY_BRACE);
 		advance();
 	}
 
 	std::vector<std::unique_ptr<Node>> body;
 
-	while (token().type != TokenType::END_OF_FILE)
+	while (token().type != Token::en::END_OF_FILE)
 	{
-		if (isCompound && token().type == TokenType::CLOSED_CURLY_BRACE) {
+		if (isCompound && token().type == Token::en::CLOSED_CURLY_BRACE) {
 			advance();
 			return body;
 		}
@@ -399,52 +399,52 @@ static std::vector<std::unique_ptr<Node>> parseStatements(bool isCompound, Scope
 		std::unique_ptr<ReturnNode> retNode;
 		switch (token().type)
 		{
-			case TokenType::RETURN:
+			case Token::en::RETURN:
 				retNode = std::make_unique<ReturnNode>(token().line, parent);
 				advance();
 				retNode->expression = parseExpression(parent);
-				assert(token().type == TokenType::SEMICOLON);
+				assert(token().type == Token::en::SEMICOLON);
 				advance();
 				body.emplace_back(std::move(retNode));
 				break;
-			case TokenType::IF:
+			case Token::en::IF:
 				body.push_back(parseIf(parent));
 				break;
-			case TokenType::ELSE:
+			case Token::en::ELSE:
 				throw_error_line(1, token().line, "Else ain't got no preceding if");
 				break;
-			case TokenType::WHILE:
+			case Token::en::WHILE:
 				body.push_back(parseWhile(parent));
 				break;
-			case TokenType::BREAK:
+			case Token::en::BREAK:
 				body.push_back(std::make_unique<BreakNode>(token().line, parent));
-				assert(peek().type == TokenType::SEMICOLON);
+				assert(peek().type == Token::en::SEMICOLON);
 				advance(2);
 				break;
-			case TokenType::CONTINUE:
+			case Token::en::CONTINUE:
 				body.push_back(std::make_unique<ContinueNode>(token().line, parent));
-				assert(peek().type == TokenType::SEMICOLON);
+				assert(peek().type == Token::en::SEMICOLON);
 				advance(2);
 				break;
-			case TokenType::DO:
+			case Token::en::DO:
 				body.push_back(parseDoWhile(parent));
 				break;
-			case TokenType::FOR:
+			case Token::en::FOR:
 				body.push_back(parseFor(parent));
 				break;
-			case TokenType::POSTINC:
-			case TokenType::POSTDEC:
+			case Token::en::POSTINC:
+			case Token::en::POSTDEC:
 				parseExpression(parent);
 				break;
-			case TokenType::SEMICOLON:
+			case Token::en::SEMICOLON:
 				advance();
 				break;
 			default:
-				if (token().type == TokenType::INT &&
-					peek(1).type == TokenType::IDENTIFIER)
+				if (token().type == Token::en::INT &&
+					peek(1).type == Token::en::IDENTIFIER)
 				{
 					body.push_back(parseDeclaration(parent));
-					assert(token().type == TokenType::SEMICOLON);
+					assert(token().type == Token::en::SEMICOLON);
 					advance();
 				}
 				else {
@@ -465,7 +465,7 @@ static std::unique_ptr<Type> parseType()
 	std::unique_ptr<Type> type = nullptr;
 	switch (tokenList.at(current).type)
 	{
-		case TokenType::INT:
+		case Token::en::INT:
 			type = std::make_unique<IntType>();
 			advance();
 			break;
@@ -477,7 +477,7 @@ static std::unique_ptr<Type> parseType()
 			return nullptr;
 	}
 
-	while (tokenList.at(current).type == TokenType::ASTERISK)
+	while (tokenList.at(current).type == Token::en::ASTERISK)
 	{
 		type = std::make_unique<PointerType>(type);
 		advance();
@@ -491,11 +491,11 @@ static std::unique_ptr<DeclarationNode> parseDeclaration(ScopeNode* parent)
 	std::unique_ptr<Type> type = parseType();
 	auto node = std::make_unique<DeclarationNode>(token().line, token().lexeme, std::move(type));
 
-	if (peek().type == TokenType::ASSIGNMENT) {
+	if (peek().type == Token::en::ASSIGNMENT) {
 		advance(2);
 		node->expression = parseExpression(parent);
 	}
-	else if (peek().type == TokenType::SEMICOLON) {
+	else if (peek().type == Token::en::SEMICOLON) {
 		advance();
 	}
 	else {
@@ -508,63 +508,12 @@ static std::unique_ptr<DeclarationNode> parseDeclaration(ScopeNode* parent)
 	return node;
 }
 
-UnaryOp TokenTypeToUnaryOp(TokenType type) {
-	UnaryOp op;
-	switch (type)
-	{
-		case TokenType::MINUS:
-			op = UnaryOp::NEGATE;
-			break;
-		case TokenType::LOGICAL_NOT:
-			op = UnaryOp::LOGICAL_NOT;
-			break;
-		case TokenType::PREINC:
-			op = UnaryOp::PREINC;
-			break;
-		case TokenType::POSTINC:
-			op = UnaryOp::POSTINC;
-			break;
-		case TokenType::PREDEC:
-			op = UnaryOp::PREDEC;
-			break;
-		case TokenType::POSTDEC:
-			op = UnaryOp::POSTDEC;
-			break;
-		default:
-			throw_error(1, fmt::format("TokenTypeToUnaryOp: no rule for token {}",
-				Token::toStr(type)));
-			exit(1);
-	}
-	return op;
-}
 
-std::string unaryOpToStr(UnaryOp op)
-{
-	switch (op)
-	{
-		case UnaryOp::NEGATE:
-			return "NEGATE";
-		case UnaryOp::LOGICAL_NOT:
-			return "LOGICAL_NOT";
-		case UnaryOp::PREINC:
-			return "PREINC";
-		case UnaryOp::POSTINC:
-			return "POSTINC";
-		case UnaryOp::PREDEC:
-			return "PREDEC";
-		case UnaryOp::POSTDEC:
-			return "POSTDEC";
-		default:
-			throw_error(1, fmt::format("Error in binaryOpToAsm: Missing op translation for {}",
-				unaryOpToStr(op)));
-			exit(1);
-	}
-}
 
 static std::vector<std::unique_ptr<Node>> parseConditionalStatements(ScopeNode* parent)
 {
 	std::vector<std::unique_ptr<Node>> statements;
-	if (token().type == TokenType::OPEN_CURLY_BRACE)
+	if (token().type == Token::en::OPEN_CURLY_BRACE)
 	{
 		// parse compound statement
 		statements = parseStatements(true, parent);
@@ -580,16 +529,16 @@ static std::unique_ptr<IfNode> parseIf(ScopeNode* parent)
 {
 	int line = token().line;
 	advance();
-	assert(token().type == TokenType::OPEN_PARENTHESES);
+	assert(token().type == Token::en::OPEN_PARENTHESES);
 	advance();
 	std::unique_ptr<Node> expr = parseExpression(parent);
-	assert(token().type == TokenType::CLOSED_PARENTHESES);
+	assert(token().type == Token::en::CLOSED_PARENTHESES);
 	advance();
 
 	auto ifNode = std::make_unique<IfNode>(line, parent, std::move(expr));
 	ifNode->body = parseConditionalStatements(ifNode.get());
 
-	if (token().type == TokenType::ELSE)
+	if (token().type == Token::en::ELSE)
 	{
 		ifNode->elseBranch = parseElse(parent);
 	}
@@ -610,15 +559,15 @@ static std::unique_ptr<WhileNode> parseWhile(ScopeNode* parent)
 {
 	int line = token().line;
 	advance();
-	assert(token().type == TokenType::OPEN_PARENTHESES);
+	assert(token().type == Token::en::OPEN_PARENTHESES);
 	advance();
 
 	std::unique_ptr<Node> expr;
 
-	if (token().type == TokenType::CLOSED_PARENTHESES) {
+	if (token().type == Token::en::CLOSED_PARENTHESES) {
 		expr = std::make_unique<VoidNode>(token().line);
 	} else expr = parseExpression(parent);
-	assert(token().type == TokenType::CLOSED_PARENTHESES);
+	assert(token().type == Token::en::CLOSED_PARENTHESES);
 	advance();
 
 	auto whileNode = std::make_unique<WhileNode>(line, parent, std::move(expr));
@@ -633,12 +582,12 @@ static std::unique_ptr<DoWhileNode> parseDoWhile(ScopeNode* parent)
 	auto loop = std::make_unique<DoWhileNode>(line, parent);
 
 	loop->body = parseConditionalStatements(loop.get());
-	assert(token().type == TokenType::WHILE);
-	assert(peek().type == TokenType::OPEN_PARENTHESES);
+	assert(token().type == Token::en::WHILE);
+	assert(peek().type == Token::en::OPEN_PARENTHESES);
 	advance(2);
 	loop->expression = parseExpression(parent);
-	assert(token().type == TokenType::CLOSED_PARENTHESES);
-	assert(peek().type == TokenType::SEMICOLON);
+	assert(token().type == Token::en::CLOSED_PARENTHESES);
+	assert(peek().type == Token::en::SEMICOLON);
 	advance(2);
 
 	return loop;	
@@ -647,20 +596,20 @@ static std::unique_ptr<DoWhileNode> parseDoWhile(ScopeNode* parent)
 static std::unique_ptr<Node> parseForPrologue(ScopeNode* parent)
 {
 	std::unique_ptr<Node> ret;
-	if (token().type == TokenType::INT)
+	if (token().type == Token::en::INT)
 	{
 		ret = parseDeclaration(parent);
-		assert(token().type == TokenType::SEMICOLON);
+		assert(token().type == Token::en::SEMICOLON);
 		advance();
 	}
-	else if (token().type == TokenType::IDENTIFIER &&
-			 peek().type == TokenType::ASSIGNMENT)
+	else if (token().type == Token::en::IDENTIFIER &&
+			 peek().type == Token::en::ASSIGNMENT)
 	{
 		ret = parseAssignment(parent);
-		assert(token().type == TokenType::SEMICOLON);
+		assert(token().type == Token::en::SEMICOLON);
 		advance();
 	}
-	else if (token().type == TokenType::SEMICOLON)
+	else if (token().type == Token::en::SEMICOLON)
 	{
 		ret = std::make_unique<VoidNode>(token().line);
 		advance();
@@ -690,33 +639,33 @@ static std::unique_ptr<ForNode> parseFor(ScopeNode* parent)
 	*/
 
 	int line = token().line;
-	assert(peek().type == TokenType::OPEN_PARENTHESES);
+	assert(peek().type == Token::en::OPEN_PARENTHESES);
 	advance(2);
 
 	std::unique_ptr<Node> prologue = parseForPrologue(parent);
 
 	std::unique_ptr<Node> expression;
-	if (token().type == TokenType::SEMICOLON) // second ;
+	if (token().type == Token::en::SEMICOLON) // second ;
 	{
 		expression = std::make_unique<VoidNode>(token().line);
 		advance();
 	} else {
 		expression = parseExpression(parent);
-		assert(token().type == TokenType::SEMICOLON);
+		assert(token().type == Token::en::SEMICOLON);
 		advance();
 	}
 		
 	std::unique_ptr<Node> epilogue;
-	if (token().type == TokenType::CLOSED_PARENTHESES) {
+	if (token().type == Token::en::CLOSED_PARENTHESES) {
 		epilogue = std::make_unique<VoidNode>(token().line);
 	} else {
-		if (peek().type == TokenType::ASSIGNMENT) {
+		if (peek().type == Token::en::ASSIGNMENT) {
 			epilogue = parseAssignment(parent);
 		}
 		else epilogue = parseExpression(parent);
 	}
 
-	assert(token().type == TokenType::CLOSED_PARENTHESES);
+	assert(token().type == Token::en::CLOSED_PARENTHESES);
 	advance();
 	auto loop = std::make_unique<ForNode>(line, parent,
 										  std::move(expression),
@@ -732,13 +681,13 @@ static std::unique_ptr<CallNode> parseCall(ScopeNode* parent)
 	auto node = std::make_unique<CallNode>(token().line, parent, token().lexeme);
 	advance(2);
 
-	while (token().type != TokenType::CLOSED_PARENTHESES)
+	while (token().type != Token::en::CLOSED_PARENTHESES)
 	{
 		std::unique_ptr<Node> arg = parseExpression(parent);
 		node->args.emplace_back(std::move(arg));
-		if (token().type == TokenType::COMMA) advance();
+		if (token().type == Token::en::COMMA) advance();
 	}
-	assert(token().type == TokenType::CLOSED_PARENTHESES);
+	assert(token().type == Token::en::CLOSED_PARENTHESES);
 	advance();
 	return node;
 }

@@ -80,14 +80,14 @@ static std::optional<Operand> genExpression(Node *node,
 	}
 	else if (auto* binOp = dynamic_cast<BinaryOpNode*>(node))
 	{
-		if (binOp->op == BinaryOp::LOGICAL_AND ||
-			binOp->op == BinaryOp::LOGICAL_OR)
+		if (binOp->op == BinOp::en::LOGICAL_AND ||
+			binOp->op == BinOp::en::LOGICAL_OR)
 		{
 			if (!vreg.exists) vreg = Operand::Temp(newVreg(), parent->changeFrameSize(4));
-			if (binOp->op == BinaryOp::LOGICAL_OR)
+			if (binOp->op == BinOp::en::LOGICAL_OR)
 				genOr(binOp, vreg, parent);
 
-			if (binOp->op == BinaryOp::LOGICAL_AND)
+			if (binOp->op == BinOp::en::LOGICAL_AND)
 				genAnd(binOp, vreg, parent);
 		}
 		else {
@@ -111,21 +111,21 @@ static std::optional<Operand> genExpression(Node *node,
 
 		switch (unOp->op)
 		{
-			case UnaryOp::PREINC:
-			case UnaryOp::PREDEC:
+			case UnOp::en::PREINC:
+			case UnOp::en::PREDEC:
 				vreg = emitPrefix(unOp, parent);
 				break;
-			case UnaryOp::POSTINC:
-			case UnaryOp::POSTDEC:
+			case UnOp::en::POSTINC:
+			case UnOp::en::POSTDEC:
 				vreg = emitPostFix(unOp, parent);
 				break;
-			case UnaryOp::NEGATE:
-			case UnaryOp::LOGICAL_NOT:
+			case UnOp::en::NEGATE:
+			case UnOp::en::LOGICAL_NOT:
 				src = genExpression(unOp->expression.get(), parent).value();
 				// optimization: inserts negativ immediates directly.
 				if (src.kind == OperandKind::Immediate)
 				{
-					if (unOp->op == UnaryOp::NEGATE)
+					if (unOp->op == UnOp::en::NEGATE)
 						src.val = -src.val;
 					else
 						src.val = src.val ? 0 : 1;
@@ -169,39 +169,6 @@ void ReturnNode::gen(ScopeNode* parent)
 	emit(std::make_unique<ReturnInstr>(dest));
 }
 
-std::string binaryOpToStr(BinaryOp op) {
-	switch (op) {
-		case BinaryOp::ADD:
-			return std::string{"+"};
-		case BinaryOp::SUB:
-			return std::string{"-"};
-		case BinaryOp::MUL:
-			return std::string{"*"};
-		case BinaryOp::DIV:
-			return std::string{"/"};
-		case BinaryOp::LOGICAL_AND:
-			return std::string{"&&"};
-		case BinaryOp::LOGICAL_OR:
-			return std::string{"||"};
-		case BinaryOp::EQUAL_TO:
-			return std::string{"=="};
-		case BinaryOp::NOT_EQUAL:
-			return std::string{"!="};
-		case BinaryOp::LESS_THAN:
-			return std::string{"<"};
-		case BinaryOp::LESSER_OR_EQUAL:
-			return std::string{"<="};
-		case BinaryOp::GREATER_THAN:
-			return std::string{">"};
-		case BinaryOp::GREATER_OR_EQUAL:
-			return std::string{">="};
-
-		default:
-			throw_error(1, "Error in BinaryInstr->toStr: Invalid operator");
-			exit(1);
-	}
-}
-
 static Operand genAssignment(int line, std::string name, Node* expr, ScopeNode* parent)
 {
 	Attrs variable = parent->getSymbol(name, line, parent);
@@ -214,10 +181,10 @@ static Operand genAssignment(int line, std::string name, Node* expr, ScopeNode* 
 	{
 		switch (binOp->op)
 		{
-			case BinaryOp::LOGICAL_OR:
+			case BinOp::en::LOGICAL_OR:
 				genOr(binOp, dest, parent);
 				break;
-			case BinaryOp::LOGICAL_AND:
+			case BinOp::en::LOGICAL_AND:
 				genAnd(binOp, dest, parent);
 				break;
 			default:
@@ -329,23 +296,23 @@ static void genCond(Node* expr,
 		Operand right;
 		switch(e->op)
 		{
-			case BinaryOp::LOGICAL_AND:
+			case BinOp::en::LOGICAL_AND:
 				local = newLocalLabel("iftrue");
 				genCond(e->left.get(), parent, local, ifFalse);
 				emit(local->def());
 				break;
-			case BinaryOp::LOGICAL_OR:
+			case BinOp::en::LOGICAL_OR:
 				local = newLocalLabel("nextcond");
 				genCond(e->left.get(), parent, ifTrue, local);
 				emit(local->def());
 				genCond(e->right.get(), parent, ifTrue, ifFalse);
 				break;
-			case BinaryOp::EQUAL_TO:
-			case BinaryOp::NOT_EQUAL:
-			case BinaryOp::LESS_THAN:
-			case BinaryOp::LESSER_OR_EQUAL:
-			case BinaryOp::GREATER_THAN:
-			case BinaryOp::GREATER_OR_EQUAL:
+			case BinOp::en::EQUAL_TO:
+			case BinOp::en::NOT_EQUAL:
+			case BinOp::en::LESS_THAN:
+			case BinOp::en::LESSER_OR_EQUAL:
+			case BinOp::en::GREATER_THAN:
+			case BinOp::en::GREATER_OR_EQUAL:
 				left = genExpression(e->left.get(), parent).value();
 				right = genExpression(e->right.get(), parent).value();
 				emit(std::make_unique<CondJump>(e->op, left, right, ifTrue, ifFalse));
@@ -361,7 +328,7 @@ static void genCond(Node* expr,
 	}
 	else if (auto u = dynamic_cast<UnaryOpNode*>(expr))
 	{
-		if (u->op == UnaryOp::LOGICAL_NOT)
+		if (u->op == UnOp::en::LOGICAL_NOT)
 		{
 			genCond(u->expression.get(), parent, ifFalse, ifTrue);
 		}
@@ -369,7 +336,7 @@ static void genCond(Node* expr,
 	}
 	else {
 		Operand operand = genExpression(expr, parent).value();
-		emit(std::make_unique<CondJump>(BinaryOp::NOT_EQUAL, 
+		emit(std::make_unique<CondJump>(BinOp::en::NOT_EQUAL, 
 										operand, 
 										Operand::Immediate(0), 
 										ifTrue, 
@@ -545,12 +512,4 @@ static Operand emitPostFix(UnaryOpNode* node, ScopeNode* parent)
 	Operand src = genExpression(node->expression.get(), parent).value();
 	emit(std::make_unique<UnaryInstr>(vreg, src, node->op));
 	return vreg;
-}
-
-bool isbinOpRelationalOperator(BinaryOp op)
-{
-	for (auto i : binOpRelationals) {
-		if (op == i) return true;
-	}
-	return false;
 }

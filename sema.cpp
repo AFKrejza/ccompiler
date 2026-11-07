@@ -291,17 +291,17 @@ void BinaryOpNode::eval(ScopeNode* parent)
 
 void UnaryOpNode::eval(ScopeNode* parent)
 {
-	if (this->op == UnaryOp::PREINC ||
-		this->op == UnaryOp::POSTINC ||
-		this->op == UnaryOp::PREDEC ||
-		this->op == UnaryOp::POSTDEC)
+	if (this->op == UnOp::en::PREINC ||
+		this->op == UnOp::en::POSTINC ||
+		this->op == UnOp::en::PREDEC ||
+		this->op == UnOp::en::POSTDEC)
 	{
 		auto* var = dynamic_cast<VariableNode*>(this->expression.get());
 		if (!var) {
 			throw_error_line(1, this->line,
 							 fmt::format("Target of {} operator is not a Variable "
 										 "(other lvalues are not supported)",
-										 unaryOpToStr(this->op)));
+										 UnOp::toStr(this->op)));
 		}
 	}
 	evalExpression(this->expression.get(), parent);

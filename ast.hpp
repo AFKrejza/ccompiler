@@ -268,15 +268,13 @@ inline int ScopeNode::changeFrameSize(int size)
 	return this->parent->changeFrameSize(size);
 }
 
-std::string binaryOpToStr(BinaryOp op);
-
 class BinaryOpNode : public Node {
 	public:
 		std::unique_ptr<Node> left;
 		std::unique_ptr<Node> right;
-		BinaryOp op;
+		BinOp::en op;
 
-		BinaryOpNode(int line, TokenType op) : Node(line), op(Token::toBinaryOp(op)) {}
+		BinaryOpNode(int line, Token::en op) : Node(line), op(Token::toBinaryOp(op)) {}
 
 		~BinaryOpNode() = default;
 
@@ -288,7 +286,7 @@ class BinaryOpNode : public Node {
 
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("{} {}\n", typeName(), binaryOpToStr(op));
+			fmt::print("{} {}\n", typeName(), BinOp::toStr(op));
 		}
 
 		std::string typeName() const override {
@@ -299,17 +297,14 @@ class BinaryOpNode : public Node {
 		void gen(ScopeNode* parent) override;
 };
 
-UnaryOp TokenTypeToUnaryOp(TokenType op);
-std::string unaryOpToStr(UnaryOp op);
-
 class UnaryOpNode : public Node {
 	public:
-		UnaryOp op;
+		UnOp::en op;
 		std::unique_ptr<Node> expression;
 
-		UnaryOpNode(int line, TokenType op, std::unique_ptr<Node> expression) :
+		UnaryOpNode(int line, Token::en op, std::unique_ptr<Node> expression) :
 			Node(line),
-			op(TokenTypeToUnaryOp(op)),
+			op(Token::toUnaryOp(op)),
 			expression(std::move(expression)) {}
 
 		~UnaryOpNode() = default;
@@ -321,7 +316,7 @@ class UnaryOpNode : public Node {
 
 		void print(int indent) const override {
 			printIndentLines(indent);
-			fmt::print("{} {}\n", this->typeName(), unaryOpToStr(op));
+			fmt::print("{} {}\n", this->typeName(), UnOp::toStr(op));
 		}
 
 		std::string typeName() const override {
@@ -558,11 +553,10 @@ class LoopNode : public ScopeNode {
 
 		LoopNode(int line, ScopeNode* parent, std::unique_ptr<Node> expression, std::string loop)
 		:	ScopeNode(line, parent),
-			expression(std::move(expression)) {
-				startLabel = newLocalLabel(loop);
-				endLabel = newLocalLabel(std::string{loop}.append("_end"));
-				bodyLabel = newLocalLabel("body");
-			}
+			expression(std::move(expression)),
+			endLabel(newLocalLabel(std::string{loop}.append("_end"))),
+			startLabel(newLocalLabel(loop)),
+			bodyLabel(newLocalLabel("body")) {}
 
 		void print(int indent) const override {
 			(void)indent;
@@ -653,10 +647,8 @@ class ForNode : public LoopNode {
 				std::unique_ptr<Node> epilogue)
 		:
 			LoopNode(line, parent, std::move(expression), "for"),
-			prologue(std::move(prologue)), epilogue(std::move(epilogue))
-		{
-			epilogueLabel = newLocalLabel("for_epilogue");
-		}
+			prologue(std::move(prologue)), epilogue(std::move(epilogue)),
+			epilogueLabel(newLocalLabel("for_epilogue")) {}
 
 		~ForNode() = default;
 

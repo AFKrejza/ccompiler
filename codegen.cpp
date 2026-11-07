@@ -16,7 +16,6 @@
 	Defines a function for translating each instruction to assembly.
 */
 
-static std::string binaryOpToAsm(BinaryOp op);
 static void emit(std::string instr);
 static void emitni(std::string instr); // no indent
 static void emitProgramEnd();
@@ -138,68 +137,34 @@ void BinaryInstr::code()
 
 	switch(this->op)
 	{
-		case BinaryOp::ADD:
-		case BinaryOp::SUB:
-		case BinaryOp::MUL:
+		case BinOp::en::ADD:
+		case BinOp::en::SUB:
+		case BinOp::en::MUL:
 			emit(fmt::format("mov r10d, {}", left));
-			emit(fmt::format("{} r10d, {}", binaryOpToAsm(this->op), right));
+			emit(fmt::format("{} r10d, {}", BinOp::toAsm(this->op), right));
 			emit(fmt::format("mov {}, r10d", dest));
 			break;
-		case BinaryOp::LESS_THAN:
-		case BinaryOp::GREATER_THAN:
-		case BinaryOp::LESSER_OR_EQUAL:
-		case BinaryOp::GREATER_OR_EQUAL:
-		case BinaryOp::NOT_EQUAL:
-		case BinaryOp::EQUAL_TO:
+		case BinOp::en::LESS_THAN:
+		case BinOp::en::GREATER_THAN:
+		case BinOp::en::LESSER_OR_EQUAL:
+		case BinOp::en::GREATER_OR_EQUAL:
+		case BinOp::en::NOT_EQUAL:
+		case BinOp::en::EQUAL_TO:
 			emit(fmt::format("mov r10d, {}", left));
 			emit(fmt::format("cmp r10d, {}", right));
-			emit(fmt::format("{} r10b", binaryOpToAsm(this->op)));
+			emit(fmt::format("{} r10b", BinOp::toAsm(this->op)));
 			emit(fmt::format("movzx r10d, r10b"));
 			emit(fmt::format("mov {}, r10d", dest));
 			break;
-		case BinaryOp::LOGICAL_AND:
-		case BinaryOp::LOGICAL_OR:
+		case BinOp::en::LOGICAL_AND:
+		case BinOp::en::LOGICAL_OR:
 			throw_error(1, "Logical AND/OR don't exist at the assembly level");
 			break;
-		case BinaryOp::DIV:
+		case BinOp::en::DIV:
 		default:
 			throw_error(1, fmt::format("emitBinaryInstr: No rule for {}",
-									   binaryOpToStr(this->op)));
+									   BinOp::toStr(this->op)));
 	}
-}
-
-static std::string binaryOpToAsm(BinaryOp op)
-{
-	switch (op)
-	{
-		case BinaryOp::ADD:
-			return "add";
-		case BinaryOp::SUB:
-			return "sub";
-		case BinaryOp::MUL:
-			return "imul";
-		case BinaryOp::LESS_THAN:
-			return "setl";
-		case BinaryOp::GREATER_THAN:
-			return "setg";
-		case BinaryOp::LESSER_OR_EQUAL:
-			return "setle";
-		case BinaryOp::GREATER_OR_EQUAL:
-			return "setge";
-		case BinaryOp::NOT_EQUAL:
-			return "setne";
-		case BinaryOp::EQUAL_TO:
-			return "sete";
-		case BinaryOp::LOGICAL_AND:
-		case BinaryOp::LOGICAL_OR:
-			throw_error(1, "Logical AND/OR don't exist at the assembly level");
-			break;
-		case BinaryOp::DIV:
-			throw_error(1, "Division isn't supported");
-			break;			
-	}
-	throw_error(1, "Error in binaryOpToAsm: Missing op translation");
-	exit(1);
 }
 
 void AssignmentInstr::code()
@@ -290,30 +255,30 @@ void UnaryInstr::code()
 
 	switch (this->op)
 	{
-		case UnaryOp::NEGATE:
+		case UnOp::en::NEGATE:
 			emit(fmt::format("mov r10d, {}", Operand::code(this->src)));
 			emit("neg r10d");
 			emit(fmt::format("mov {}, r10d", Operand::code(this->dest)));
 			break;
-		case UnaryOp::LOGICAL_NOT:
+		case UnOp::en::LOGICAL_NOT:
 			emit(fmt::format("mov r10d, {}", Operand::code(this->src)));
 			emit("cmp r10d, 0");
 			emit("sete r10b");
 			emit("movzx r10d, r10b");
 			emit(fmt::format("mov {}, r10d", Operand::code(this->dest)));
 			break;
-		case UnaryOp:: PREINC:
+		case UnOp::en:: PREINC:
 			emit(fmt::format("inc DWORD PTR {}", Operand::code(this->src)));
 			break;
-		case UnaryOp:: PREDEC:
+		case UnOp::en:: PREDEC:
 			emit(fmt::format("dec DWORD PTR {}", Operand::code(this->src)));
 			break;
-		case UnaryOp::POSTINC:
+		case UnOp::en::POSTINC:
 			emit(fmt::format("mov r10d, {}", Operand::code(this->src)));
 			emit(fmt::format("mov {}, r10d", Operand::code(this->dest)));
 			emit(fmt::format("inc DWORD PTR {}", Operand::code(this->src)));
 			break;
-		case UnaryOp::POSTDEC:
+		case UnOp::en::POSTDEC:
 			emit(fmt::format("mov r10d, {}", Operand::code(this->src)));
 			emit(fmt::format("mov {}, r10d", Operand::code(this->dest)));
 			emit(fmt::format("dec DWORD PTR {}", Operand::code(this->src)));
@@ -356,35 +321,6 @@ void CallInstr::code()
 	}
 }
 
-std::string binaryOpRelationalToAsm(BinaryOp op, bool cond)
-{
-	switch (op)
-	{
-		case BinaryOp::EQUAL_TO:
-			return cond ? "je" : "jne";
-		case BinaryOp::NOT_EQUAL:
-			return cond ? "jne" : "je" ;
-		case BinaryOp::LESS_THAN:
-			return cond ? "jl" : "jge" ;
-		case BinaryOp::LESSER_OR_EQUAL:
-			return cond ? "jle" : "jg" ;
-		case BinaryOp::GREATER_THAN:
-			return cond ? "jg" : "jle" ;
-		case BinaryOp::GREATER_OR_EQUAL:
-			return cond ? "jge" : "jl" ;
-		case BinaryOp::LOGICAL_AND:
-		case BinaryOp::LOGICAL_OR:
-		case BinaryOp::ADD:
-		case BinaryOp::SUB:
-		case BinaryOp::MUL:
-		case BinaryOp::DIV:
-			throw_error(1, fmt::format("'{}' is not a relational operator.", binaryOpToStr(op)));
-			break;
-	}
-	throw_error(1, fmt::format("'{}' is not handled correctly", binaryOpToStr(op)));
-	exit(1);
-}
-
 void CondJump::code()
 {
 	// must contain a relational operator
@@ -392,8 +328,8 @@ void CondJump::code()
 	emit(fmt::format("mov r10d, {}", Operand::code(this->left)));
 	emit(fmt::format("cmp r10d, {}", Operand::code(this->right)));
 
-	emit(fmt::format("{} {}", binaryOpRelationalToAsm(this->op, true), this->ifTrue->name));
-	emit(fmt::format("{} {}", binaryOpRelationalToAsm(this->op, false), this->ifFalse->name));
+	emit(fmt::format("{} {}", BinOp::relationalToAsm(this->op, true), this->ifTrue->name));
+	emit(fmt::format("{} {}", BinOp::relationalToAsm(this->op, false), this->ifFalse->name));
 	
 	return;
 }

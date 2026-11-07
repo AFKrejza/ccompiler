@@ -11,21 +11,21 @@ static bool isAtEnd();
 static void scanToken();
 static bool is_alnum_underscore(char c);
 static std::string scanLexeme();
-static void populateKeywords(std::unordered_map<TokenType, std::string> printmap);
+static void populateKeywords(std::unordered_map<Token::en, std::string> printmap);
 static bool parseInteger(std::string lexeme);
 static int ctoi(char c);
 void throw_invalid_identifier(int line);
 void throw_invalid_identifier_start(int line);
 
-static void addToken(TokenType type, 
+static void addToken(Token::en type, 
 					 int length, 
 					 std::string lexeme, 
 					 Literal literal = std::monostate{});
 
 // contains all symbols and keywords
-std::unordered_map<TokenType, std::string> populatePrintmap();
+std::unordered_map<Token::en, std::string> populatePrintmap();
 
-const std::unordered_map<TokenType, std::string> Token::printmap = populatePrintmap();
+const std::unordered_map<Token::en, std::string> Token::printmap = populatePrintmap();
 
 std::vector<Token> tokenList;
 
@@ -34,7 +34,7 @@ static int column = 0;
 static int line = 1;
 
 std::string source;
-std::unordered_map<std::string, TokenType> keywords;
+std::unordered_map<std::string, Token::en> keywords;
 
 void lexer(std::string src)
 {
@@ -47,7 +47,7 @@ void lexer(std::string src)
 		scanToken();
 	}
 
-	addToken(TokenType::END_OF_FILE, 1, "");
+	addToken(Token::en::END_OF_FILE, 1, "");
 
 	int len = tokenList.size();
 	fmt::print("Tokenizer done. tokenList size: {}\n", len);
@@ -68,110 +68,110 @@ static void scanToken()
 		case '\n':
 			break;
 		case ';':
-			addToken(TokenType::SEMICOLON, 1, ";");
+			addToken(Token::en::SEMICOLON, 1, ";");
 			break;
 		case '+':
 			if (peek() == '+') {
-				addToken(TokenType::INC, 2, "++");
+				addToken(Token::en::INC, 2, "++");
 				advance();
 			}
 			else {
-				addToken(TokenType::PLUS, 1, "+");
+				addToken(Token::en::PLUS, 1, "+");
 			}
 			break;
 		case '-':
 			if (peek() == '-') {
-				addToken(TokenType::DEC, 2, "--");
+				addToken(Token::en::DEC, 2, "--");
 				advance();
 			}
 			else {
-				addToken(TokenType::MINUS, 1, "-");
+				addToken(Token::en::MINUS, 1, "-");
 			}
 			break;
 		case '*':
-			addToken(TokenType::ASTERISK, 1, "*");
+			addToken(Token::en::ASTERISK, 1, "*");
 			break;
 		case '(':
-			addToken(TokenType::OPEN_PARENTHESES, 1, "(");
+			addToken(Token::en::OPEN_PARENTHESES, 1, "(");
 			break;
 		case ')':
-			addToken(TokenType::CLOSED_PARENTHESES, 1, ")");
+			addToken(Token::en::CLOSED_PARENTHESES, 1, ")");
 			break;
 		case '{':
-			addToken(TokenType::OPEN_CURLY_BRACE, 1, "{");
+			addToken(Token::en::OPEN_CURLY_BRACE, 1, "{");
 			break;
 		case '}':
-			addToken(TokenType::CLOSED_CURLY_BRACE, 1, "}");
+			addToken(Token::en::CLOSED_CURLY_BRACE, 1, "}");
 			break;
 		case '[':
-			addToken(TokenType::OPEN_SQUARE_BRACKET, 1, "[");
+			addToken(Token::en::OPEN_SQUARE_BRACKET, 1, "[");
 			break;
 		case ']':
-			addToken(TokenType::CLOSED_SQUARE_BRACKET, 1, "]");
+			addToken(Token::en::CLOSED_SQUARE_BRACKET, 1, "]");
 			break;
 		case ',':
-			addToken(TokenType::COMMA, 1, ",");
+			addToken(Token::en::COMMA, 1, ",");
 			break;
 		case '=':
 			if (peek() == '>') {
-				addToken(TokenType::GREATER_OR_EQUAL, 2, "=>");
+				addToken(Token::en::GREATER_OR_EQUAL, 2, "=>");
 				advance();
 			}
 			else if (peek() == '<') {
-				addToken(TokenType::LESSER_OR_EQUAL, 2, "=<");
+				addToken(Token::en::LESSER_OR_EQUAL, 2, "=<");
 				advance();
 			}
 			else if (peek() == '=') {
-				addToken(TokenType::EQUAL_TO, 2, "==");
+				addToken(Token::en::EQUAL_TO, 2, "==");
 				advance();
 			}
 			else {
-				addToken(TokenType::ASSIGNMENT, 1, "=");
+				addToken(Token::en::ASSIGNMENT, 1, "=");
 			}
 			break;
 		case '>':
 			if (peek() == '=') {
-				addToken(TokenType::GREATER_OR_EQUAL, 2, ">=");
+				addToken(Token::en::GREATER_OR_EQUAL, 2, ">=");
 				advance();
 			}
 			else {
-				addToken(TokenType::GREATER_THAN, 1, ">");
+				addToken(Token::en::GREATER_THAN, 1, ">");
 			}
 			break;
 		case '<':
 			if (peek() == '=') {
-				addToken(TokenType::LESSER_OR_EQUAL, 2, "<=");
+				addToken(Token::en::LESSER_OR_EQUAL, 2, "<=");
 				advance();
 			}
 			else {
-				addToken(TokenType::LESS_THAN, 1, "<");
+				addToken(Token::en::LESS_THAN, 1, "<");
 			}
 			break;
 		case '!':
 			if (peek() == '=') {
-				addToken(TokenType::NOT_EQUAL, 2, "!=");
+				addToken(Token::en::NOT_EQUAL, 2, "!=");
 				advance();
 			}
 			else {
-				addToken(TokenType::LOGICAL_NOT, 1, "!");
+				addToken(Token::en::LOGICAL_NOT, 1, "!");
 			}
 			break;
 		case '&':
 			if (peek() == '&') {
-				addToken(TokenType::LOGICAL_AND, 2, "&&");
+				addToken(Token::en::LOGICAL_AND, 2, "&&");
 				advance();
 			}
 			else {
-				addToken(TokenType::BITWISE_AND, 1, "&"); // won't work with pointers
+				addToken(Token::en::BITWISE_AND, 1, "&"); // won't work with pointers
 			}
 			break;
 		case '|':
 			if (peek() == '|') {
-				addToken(TokenType::LOGICAL_OR, 2, "||");
+				addToken(Token::en::LOGICAL_OR, 2, "||");
 				advance();
 			}
 			else {
-				addToken(TokenType::BITWISE_OR, 1, "|");
+				addToken(Token::en::BITWISE_OR, 1, "|");
 			}
 			break;
 		case '"':
@@ -182,7 +182,7 @@ static void scanToken()
 			int start = current;
 			std::string lexeme = scanLexeme();
 
-			TokenType type;
+			Token::en type;
 			auto it = keywords.find(lexeme);
 			if (it != keywords.end()) {
 				type = it->second;
@@ -193,7 +193,7 @@ static void scanToken()
 				break;
 			}
 			else {
-				addToken(TokenType::IDENTIFIER, current - start, lexeme);
+				addToken(Token::en::IDENTIFIER, current - start, lexeme);
 				break;
 			}
 
@@ -202,22 +202,22 @@ static void scanToken()
 }
 
 // defines all permitted keywords
-static void populateKeywords(std::unordered_map<TokenType, std::string> printmap)
+static void populateKeywords(std::unordered_map<Token::en, std::string> printmap)
 {
-	const std::vector<TokenType> keywordFilter = {
-		TokenType::CHAR,
-		TokenType::SHORT,
-		TokenType::INT,
-		TokenType::LONG,
-		TokenType::IF,
-		TokenType::ELSE,
-		TokenType::RETURN,
-		TokenType::WHILE,
-		TokenType::DO,
-		TokenType::FOR,
-		TokenType::BREAK,
-		TokenType::CONTINUE,
-		TokenType::EXTERN
+	const std::vector<Token::en> keywordFilter = {
+		Token::en::CHAR,
+		Token::en::SHORT,
+		Token::en::INT,
+		Token::en::LONG,
+		Token::en::IF,
+		Token::en::ELSE,
+		Token::en::RETURN,
+		Token::en::WHILE,
+		Token::en::DO,
+		Token::en::FOR,
+		Token::en::BREAK,
+		Token::en::CONTINUE,
+		Token::en::EXTERN
 	};
 
 	int len = keywordFilter.size();
@@ -242,7 +242,7 @@ static void parse_string()
 		if (source[current] == '"')
 		{
 			str = source.substr(start, current - start);
-			addToken(TokenType::STRING_LITERAL, str.size(), str, str);
+			addToken(Token::en::STRING_LITERAL, str.size(), str, str);
 			advance();
 			return;
 		}
@@ -263,7 +263,7 @@ bool isNumber(char c)
 	return false;
 }
 
-static void addToken(TokenType type, int length, std::string lexeme, Literal literal)
+static void addToken(Token::en type, int length, std::string lexeme, Literal literal)
 {
 	Token token(type, length, lexeme, literal, line, column);
 	tokenList.push_back(token);
@@ -316,7 +316,7 @@ static std::string scanLexeme()
 	return lexeme;
 }
 
-// negative numbers are managed in the parser with UnaryOp::NEGATE
+// negative numbers are managed in the parser with UnOp::en::NEGATE
 static bool parseInteger(std::string lexeme)
 {
 	int number = 0;	
@@ -330,7 +330,7 @@ static bool parseInteger(std::string lexeme)
 		number *= 10;
 		number += ctoi(lexeme[i]);
 	}
-	addToken(TokenType::INTEGER, current - len, lexeme, number);
+	addToken(Token::en::INTEGER, current - len, lexeme, number);
 	return true;
 }
 
